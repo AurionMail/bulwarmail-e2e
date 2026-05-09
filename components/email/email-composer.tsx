@@ -281,6 +281,12 @@ export function EmailComposer({
   const currentIdentity = selectedIdentityId
     ? identities.find((identity) => identity.id === selectedIdentityId) || primaryIdentity
     : primaryIdentity;
+  // Alias identities often lack a configured signature — fall back to the primary
+  // identity's signature so replies (which auto-select a matching alias) still
+  // populate the user's signature.
+  const signatureIdentity = (currentIdentity?.htmlSignature || currentIdentity?.textSignature)
+    ? currentIdentity
+    : primaryIdentity;
   useEffect(() => {
     if (!autoSelectReplyIdentity) return;
     if (selectedIdentityId || initialData?.selectedIdentityId) return;
@@ -322,10 +328,10 @@ export function EmailComposer({
     selectedIdentityId,
   ]);
 
-  const composerSignatureHtml = currentIdentity?.htmlSignature
-    ? `<div>${sanitizeEmailHtml(currentIdentity.htmlSignature)}</div>`
-    : currentIdentity?.textSignature
-      ? `<div>${getPlainTextSignature(currentIdentity).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`
+  const composerSignatureHtml = signatureIdentity?.htmlSignature
+    ? `<div>${sanitizeEmailHtml(signatureIdentity.htmlSignature)}</div>`
+    : signatureIdentity?.textSignature
+      ? `<div>${getPlainTextSignature(signatureIdentity).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`
       : '';
   const getAutocomplete = useContactStore((s) => s.getAutocomplete);
   const addToTrustedSendersBook = useContactStore((s) => s.addToTrustedSendersBook);
@@ -954,11 +960,11 @@ export function EmailComposer({
     // Body is already HTML from the rich text editor (or plain text in plain text mode).
     // Build HTML signature block (used only in rich text mode)
     const buildSignatureHtml = (): string => {
-      if (currentIdentity?.htmlSignature) {
-        return `<br><br>-- <br>${sanitizeEmailHtml(currentIdentity.htmlSignature)}`;
+      if (signatureIdentity?.htmlSignature) {
+        return `<br><br>-- <br>${sanitizeEmailHtml(signatureIdentity.htmlSignature)}`;
       }
-      if (currentIdentity?.textSignature) {
-        return `<br><br>-- <br>${currentIdentity.textSignature.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}`;
+      if (signatureIdentity?.textSignature) {
+        return `<br><br>-- <br>${signatureIdentity.textSignature.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}`;
       }
       return '';
     };
@@ -970,8 +976,8 @@ export function EmailComposer({
 
     // In plain text mode, send text/plain only (no HTML body)
     const finalBody = plainTextMode
-      ? appendPlainTextSignature(body, currentIdentity)
-      : appendPlainTextSignature(htmlToPlainText(body), currentIdentity);
+      ? appendPlainTextSignature(body, signatureIdentity)
+      : appendPlainTextSignature(htmlToPlainText(body), signatureIdentity);
 
     const rewritten = plainTextMode ? null : rewriteInlineImages(body);
     const finalHtmlBody = plainTextMode
@@ -1500,9 +1506,9 @@ export function EmailComposer({
         )}
 
         {plainTextMode ? (
-          getPlainTextSignature(currentIdentity) ? (
+          getPlainTextSignature(signatureIdentity) ? (
             <div className="px-4 pb-3 text-sm leading-6 text-muted-foreground break-words whitespace-pre-wrap font-mono">
-              {'-- \n'}{getPlainTextSignature(currentIdentity)}
+              {'-- \n'}{getPlainTextSignature(signatureIdentity)}
             </div>
           ) : null
         ) : composerSignatureHtml ? (
