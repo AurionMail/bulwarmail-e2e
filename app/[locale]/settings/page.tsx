@@ -686,7 +686,7 @@ export default function SettingsPage() {
   if (!isDesktop) {
     if (mobileShowContent) {
       return (
-        <div className="flex flex-col h-dvh bg-background">
+        <div className="flex flex-col h-dvh bg-background pt-[env(safe-area-inset-top)]">
           <div className="flex items-center gap-2 px-4 h-14 border-b border-border bg-background shrink-0">
             <Button
               variant="ghost"
@@ -716,7 +716,7 @@ export default function SettingsPage() {
     }
 
     return (
-      <div className="flex flex-col h-dvh bg-background">
+      <div className="flex flex-col h-dvh bg-background pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-2 px-4 h-14 border-b border-border bg-background shrink-0">
           <Button
             variant="ghost"
@@ -826,7 +826,7 @@ export default function SettingsPage() {
 
   // Desktop layout
   return (
-    <div className="flex h-dvh bg-background">
+    <div className="flex h-dvh bg-background pt-[env(safe-area-inset-top)]">
       <div className="w-14 bg-secondary flex flex-col flex-shrink-0" style={{ borderRight: '1px solid rgba(128, 128, 128, 0.3)' }}>
         <NavigationRail
           collapsed

@@ -374,7 +374,7 @@ export default function FilesPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex h-dvh bg-background overflow-hidden">
+    <div className="flex h-dvh bg-background overflow-hidden pt-[env(safe-area-inset-top)]">
       {!isMobile && (
         <div className="w-14 bg-secondary flex flex-col flex-shrink-0" style={{ borderRight: '1px solid rgba(128, 128, 128, 0.3)' }}>
           <NavigationRail

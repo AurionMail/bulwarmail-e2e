@@ -1216,7 +1216,7 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className={cn("flex h-dvh bg-background overflow-hidden", isMobile && "flex-col")}>
+    <div className={cn("flex h-dvh bg-background overflow-hidden pt-[env(safe-area-inset-top)]", isMobile && "flex-col")}>
       {/* Left Navigation Rail */}
       {!isMobile && (
         <div className="w-14 bg-secondary flex flex-col flex-shrink-0" style={{ borderRight: '1px solid rgba(128, 128, 128, 0.3)' }}>

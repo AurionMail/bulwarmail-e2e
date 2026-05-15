@@ -1959,7 +1959,7 @@ export default function Home() {
 
   return (
     <DragDropProvider>
-      <div className="flex flex-col h-dvh bg-background overflow-hidden">
+      <div className="flex flex-col h-dvh bg-background overflow-hidden pt-[env(safe-area-inset-top)]">
         {isRateLimited && rateLimitSecondsLeft !== null && (
           <div className="flex items-center justify-center gap-2 bg-amber-500/10 border-b border-amber-500/30 text-amber-700 dark:text-amber-300 text-sm py-1.5 px-4 flex-shrink-0">
             <AlertTriangle className="h-3.5 w-3.5" />
@@ -2009,7 +2009,7 @@ export default function Home() {
             "flex-shrink-0 h-full z-50",
             !isResizing && "transition-[width] duration-300",
             // Mobile/Tablet: fixed overlay
-            "max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:w-72",
+            "max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:w-72 max-lg:pt-[env(safe-area-inset-top)]",
             "max-lg:transform max-lg:transition-transform max-lg:duration-300 max-lg:ease-in-out",
             !sidebarOpen && "max-lg:-translate-x-full",
             // Desktop: normal flow
@@ -2418,7 +2418,7 @@ export default function Home() {
               isHorizontalMailLayout ? "min-h-0" : "h-full",
               // Mobile: full screen overlay when active
               "max-md:fixed max-md:inset-0 max-md:z-30",
-              "max-md:h-full",
+              "max-md:h-full max-md:pt-[env(safe-area-inset-top)]",
               isMobile && activeView !== "viewer" && "max-md:hidden",
               // Tablet/Desktop: relative
               "md:relative",
