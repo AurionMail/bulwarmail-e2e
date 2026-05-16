@@ -58,13 +58,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // 1. Provision the admin account. Aborts cleanly if one already exists
-    //    (defence in depth - should be impossible in bootstrap state).
-    const created = await setInitialAdminPassword(adminPassword);
+    // 1. Provision the admin account. An admin.json file may already exist
+    //    from a previous ADMIN_PASSWORD env var or an aborted earlier wizard
+    //    run while setupComplete is still false — accept the wizard's
+    //    password as authoritative in that case. The finish route is gated
+    //    by the bootstrap state + one-time setup token, so this is safe.
+    const created = await setInitialAdminPassword(adminPassword, { allowOverwrite: true });
     if (!created) {
       return NextResponse.json(
-        { error: 'Admin account already exists; cannot finish setup again' },
-        { status: 409 },
+        { error: 'Failed to write admin credentials' },
+        { status: 500 },
       );
     }
 

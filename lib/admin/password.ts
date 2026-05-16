@@ -189,11 +189,21 @@ export async function changeAdminPassword(currentPassword: string, newPassword: 
 
 /**
  * Set the admin password without verifying a current one. Used by the setup
- * wizard during initial bootstrap. Refuses to overwrite an existing password.
+ * wizard during initial bootstrap.
+ *
+ * Refuses to overwrite an existing password unless `allowOverwrite` is true.
+ * The wizard's finish route passes `allowOverwrite: true` so a half-completed
+ * setup (admin.json left behind by an ADMIN_PASSWORD env var or an aborted
+ * earlier wizard run, while setupComplete is still false) can be recovered
+ * by simply running the wizard again. Safe because the finish route is
+ * already gated by the one-time setup token.
  */
-export async function setInitialAdminPassword(newPassword: string): Promise<boolean> {
+export async function setInitialAdminPassword(
+  newPassword: string,
+  options: { allowOverwrite?: boolean } = {},
+): Promise<boolean> {
   const existing = await readConfigData();
-  if (existing) return false;
+  if (existing && !options.allowOverwrite) return false;
   const hash = await hashPassword(newPassword);
   cachedConfig = { passwordHash: hash };
   cachedState = freshState();
