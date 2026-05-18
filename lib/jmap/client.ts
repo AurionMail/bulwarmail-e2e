@@ -2014,8 +2014,8 @@ export class JMAPClient implements IJMAPClient {
     const emailData: EmailDraft = {
       from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: fromEmail || this.username }],
       to: to.map(email => ({ email })),
-      cc: cc?.map(email => ({ email })),
-      bcc: bcc?.map(email => ({ email })),
+      cc: cc?.length ? cc.map(email => ({ email })) : undefined,
+      bcc: bcc?.length ? bcc.map(email => ({ email })) : undefined,
       subject,
       keywords: { "$draft": true },
       mailboxIds: { [draftsMailbox.id]: true },
@@ -2141,8 +2141,11 @@ export class JMAPClient implements IJMAPClient {
       from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: fromEmail || this.username }],
       replyTo: identityReplyTo?.length ? identityReplyTo : undefined,
       to: to.map(email => ({ email })),
-      cc: cc?.map(email => ({ email })),
-      bcc: bcc?.map(email => ({ email })),
+      // RFC 5322 §3.6.3: To/Cc carry an address-list (non-empty). Sending
+      // cc:[] makes the server emit a literal `Cc:` header with no addresses,
+      // which is malformed and a spam signal. Omit the field when empty.
+      cc: cc?.length ? cc.map(email => ({ email })) : undefined,
+      bcc: bcc?.length ? bcc.map(email => ({ email })) : undefined,
       subject,
       inReplyTo: normalizedInReplyTo?.length ? normalizedInReplyTo : undefined,
       references: normalizedReferences?.length ? normalizedReferences : undefined,
