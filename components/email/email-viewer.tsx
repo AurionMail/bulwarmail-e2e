@@ -81,7 +81,7 @@ import { useTour } from "@/components/tour/tour-provider";
 import { SmimePassphraseDialog } from "@/components/settings/smime-passphrase-dialog";
 import { findCalendarAttachment, isCalendarMimeType } from "@/lib/calendar-invitation";
 import { RecipientPopover } from "./recipient-popover";
-import { isFilePreviewable } from "@/lib/file-preview";
+import { isFilePreviewable, isMimeTypeSafeForInlinePreview } from "@/lib/file-preview";
 import { SmimeStatusBanner } from "./smime-status-banner";
 import { detectSmime } from "@/lib/smime/smime-detect";
 import { smimeDecrypt, SmimeKeyLockedError, normalizeCmsBytes } from "@/lib/smime/smime-decrypt";
@@ -2535,7 +2535,12 @@ export function EmailViewer({
 
   const handleEffectiveAttachmentOpen = useCallback(async (attachment: EffectiveAttachment) => {
     const isPreviewable = isFilePreviewable(attachment.name || undefined, attachment.type);
-    const opensPreview = isPreviewable && mailAttachmentAction === 'preview';
+    // Blob URLs inherit our origin; script-bearing MIME types (text/html,
+    // image/svg+xml, etc.) would execute as the webmail origin if opened
+    // top-level. Force the download path for anything not on the inert allowlist.
+    const opensPreview = isPreviewable
+      && mailAttachmentAction === 'preview'
+      && isMimeTypeSafeForInlinePreview(attachment.type);
 
     const info: AttachmentInfo = {
       name: attachment.name || '',
