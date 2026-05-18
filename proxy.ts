@@ -74,22 +74,31 @@ export async function proxy(request: NextRequest) {
 
   const nonce = crypto.randomUUID();
   const isDev = process.env.NODE_ENV === "development";
+  // The plugin-sandbox iframe document needs `'unsafe-eval'` to run plugin
+  // bundles via `new Function`. It is null-origin (sandbox="allow-scripts"),
+  // so the relaxation is scoped strictly to that document and never reaches
+  // the main app, plus it must be embeddable from `'self'`.
+  const isSandboxPath = pathname === "/plugin-sandbox" || pathname.startsWith("/plugin-sandbox/");
 
-  const scriptSrc = isDev
-    ? `'self' 'nonce-${nonce}' 'unsafe-eval' blob:`
-    : `'self' 'nonce-${nonce}' blob:`;
+  const scriptSrc = isSandboxPath
+    ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
+    : isDev
+    ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
+    : `'self' 'nonce-${nonce}'`;
 
   const connectSrc = isDev ? `'self' http: https: ws: wss:` : `'self' https:`;
 
-  const frameAncestors = process.env.ALLOWED_FRAME_ANCESTORS?.trim() || "'none'";
+  const frameAncestors = isSandboxPath
+    ? `'self'`
+    : process.env.ALLOWED_FRAME_ANCESTORS?.trim() || "'none'";
 
   // Plugins may declare iframe origins they need (e.g. for embedded video).
   // Each origin is validated at install time and re-validated here.
   const pluginFrameOrigins = await getEnabledPluginFrameOrigins();
   const frameSrc =
     pluginFrameOrigins.length > 0
-      ? `frame-src 'self' blob: ${pluginFrameOrigins.join(" ")}`
-      : `frame-src 'self' blob:`;
+      ? `frame-src 'self' ${pluginFrameOrigins.join(" ")}`
+      : `frame-src 'self'`;
 
   const csp = [
     `default-src 'self'`,
@@ -99,7 +108,7 @@ export async function proxy(request: NextRequest) {
     `font-src 'self'`,
     `connect-src ${connectSrc}`,
     frameSrc,
-    `object-src 'self' blob:`,
+    `object-src 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,
     `frame-ancestors ${frameAncestors}`,

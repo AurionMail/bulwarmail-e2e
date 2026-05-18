@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import type { SlotName } from '@/lib/plugin-types';
-import { usePluginStore } from '@/stores/plugin-store';
-import { PluginSlotRenderer } from './plugin-slot-renderer';
+import { offersForSlot, subscribe } from '@/lib/plugin-sandbox/registry';
+import { PluginIframeSlot } from './plugin-iframe-slot';
 
 interface PluginSlotProps {
   name: SlotName;
@@ -12,16 +12,21 @@ interface PluginSlotProps {
 }
 
 export function PluginSlot({ name, className, extraProps }: PluginSlotProps) {
-  const registrations = usePluginStore(s => s.slots[name]);
+  const offers = useSyncExternalStore(
+    subscribe,
+    () => offersForSlot(name),
+    () => [],
+  );
 
-  if (!registrations || registrations.length === 0) return null;
+  if (offers.length === 0) return null;
 
   return (
     <div className={className} data-plugin-slot={name}>
-      {registrations.map((reg, i) => (
-        <PluginSlotRenderer
-          key={`${reg.pluginId}-${i}`}
-          registration={reg}
+      {offers.map((offer) => (
+        <PluginIframeSlot
+          key={offer.pluginId}
+          pluginId={offer.pluginId}
+          slot={name}
           extraProps={extraProps}
         />
       ))}

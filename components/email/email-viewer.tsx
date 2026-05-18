@@ -92,7 +92,7 @@ import { parseTnef, isTnefAttachment } from "@/lib/tnef";
 import { debug } from "@/lib/debug";
 import type { TnefAttachment } from "@/lib/tnef";
 import { PluginSlot } from "@/components/plugins/plugin-slot";
-import { usePluginStore } from "@/stores/plugin-store";
+import { usePluginSlotOffers } from "@/hooks/use-plugin-slot-offers";
 import { ResizeHandle } from "@/components/layout/resize-handle";
 import { emailHooks, uiHooks } from "@/lib/plugin-hooks";
 import type { AttachmentInfo, AttachmentPreview } from "@/lib/plugin-types";
@@ -970,8 +970,8 @@ export function EmailViewer({
   const [embeddedEmailUnwrapped, setEmbeddedEmailUnwrapped] = useState(false);
 
   // Plugin detail sidebar state
-  const detailSlots = usePluginStore(s => s.slots['email-detail-sidebar']);
-  const hasDetailSidebar = detailSlots && detailSlots.length > 0;
+  const detailSlots = usePluginSlotOffers('email-detail-sidebar');
+  const hasDetailSidebar = detailSlots.length > 0;
   const [detailSidebarCollapsed, setDetailSidebarCollapsed] = useState(false);
   const [detailSidebarWidth, setDetailSidebarWidth] = useState(280);
   const detailSidebarWidthRef = useRef(280);
