@@ -740,6 +740,21 @@ function ServerStep({ config, setConfig, onNext }: Pick<StepProps, 'config' | 's
             </div>
           </div>
         )}
+        {isPrivateOrLocalHostUrl(config.jmapServerUrl) && (
+          <div className="mt-2 p-3 rounded-xl border border-warning/20 bg-warning/5 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-warning/15 text-warning flex items-center justify-center flex-shrink-0 shadow-sm">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0 self-center">
+              <p className="text-sm font-medium text-foreground leading-relaxed">
+                This URL only resolves locally.
+              </p>
+              <p className="text-sm text-muted-foreground mt-0.5 leading-relaxed">
+                Mail is fetched directly from the user&apos;s browser, so the JMAP URL must be reachable from anywhere users sign in - not just this machine or LAN. Use a public hostname (e.g. <code className="font-mono text-xs">https://mail.example.com</code>) in production.
+              </p>
+            </div>
+          </div>
+        )}
         {probe && probe.url === config.jmapServerUrl && (
           probe.status === 'jmap_detected' ? (
             <div className="mt-2 p-3 rounded-xl border border-success/20 bg-success/5 flex items-start gap-3">
@@ -1777,6 +1792,41 @@ function hasAnyBranding(c: WizardConfig): boolean {
 
 function isInsecureHttpUrl(url: string): boolean {
   return /^http:\/\//i.test(url.trim());
+}
+
+/**
+ * The JMAP URL is called directly from the user's browser. A URL that only
+ * resolves on the operator's machine or LAN (localhost, RFC1918, .local mDNS)
+ * works during setup but breaks for any real user. Surface a soft warning
+ * so the operator catches this before going live.
+ */
+function isPrivateOrLocalHostUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  let host: string;
+  try {
+    host = new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  // Strip IPv6 brackets, if any.
+  if (host.startsWith('[') && host.endsWith(']')) {
+    host = host.slice(1, -1);
+  }
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host.endsWith('.local')) return true;
+  if (host === '::1' || host === '0:0:0:0:0:0:0:1') return true;
+  // IPv4 literal: only flag the well-known private/loopback/link-local ranges.
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  return false;
 }
 
 function detectInsecureContext(): boolean {
