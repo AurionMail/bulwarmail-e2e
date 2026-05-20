@@ -161,6 +161,7 @@ const tabSearchPaths: Record<Tab, string[]> = {
     'settings.account.email',
     'settings.account.server',
     'settings.account.storage',
+    'settings.account.accounts',
   ],
   language: ['settings.appearance.language'],
   notifications: ['settings.notifications'],
@@ -228,7 +229,7 @@ const tabSearchPaths: Record<Tab, string[]> = {
 // Extra English keywords per tab so common search terms hit even when the
 // translation doesn't contain the literal word.
 const tabKeywords: Record<Tab, string> = {
-  account: 'profile email password user signin signout',
+  account: 'profile email password user signin signout reorder rearrange drag dropdown switcher multi-account',
   language: 'locale region timezone date time format',
   notifications: 'sound alert push badge',
   appearance: 'theme dark light font size accent color animation density',

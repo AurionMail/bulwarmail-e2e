@@ -1202,6 +1202,18 @@
       "last_sync": {
         "label": "Last Sync",
         "value": "{time}"
+      },
+      "accounts": {
+        "title": "Logged-in accounts",
+        "description": "Drag to reorder how accounts appear in the account dropdown",
+        "active": "Currently active account",
+        "default_badge": "Default account",
+        "set_default": "Set as default",
+        "switch_to": "Switch to this account",
+        "move_up": "Move up",
+        "move_down": "Move down",
+        "drag_handle": "Drag to reorder",
+        "add": "Add account"
       }
     },
     "security": {

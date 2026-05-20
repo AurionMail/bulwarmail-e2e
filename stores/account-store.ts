@@ -43,6 +43,7 @@ interface AccountState {
   setDefaultAccount: (accountId: string) => void;
   getDefaultAccount: () => AccountEntry | null;
   updateAccount: (accountId: string, updates: Partial<AccountEntry>) => void;
+  reorderAccounts: (orderedIds: string[]) => void;
   getActiveAccount: () => AccountEntry | null;
   getAccountById: (accountId: string) => AccountEntry | undefined;
   getNextCookieSlot: () => number;
@@ -166,6 +167,23 @@ export const useAccountStore = create<AccountState>()(
             a.id === accountId ? { ...a, ...updates } : a
           ),
         }));
+      },
+
+      reorderAccounts: (orderedIds) => {
+        set((s) => {
+          const byId = new Map(s.accounts.map((a) => [a.id, a]));
+          const reordered: AccountEntry[] = [];
+          for (const id of orderedIds) {
+            const a = byId.get(id);
+            if (a) {
+              reordered.push(a);
+              byId.delete(id);
+            }
+          }
+          // Append any accounts that weren't in the ordered list (defensive)
+          for (const a of byId.values()) reordered.push(a);
+          return { accounts: reordered };
+        });
       },
 
       getActiveAccount: () => {

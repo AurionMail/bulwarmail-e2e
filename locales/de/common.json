@@ -1199,6 +1199,18 @@
       "last_sync": {
         "label": "Letzte Synchronisierung",
         "value": "{time}"
+      },
+      "accounts": {
+        "title": "Angemeldete Konten",
+        "description": "Ziehen Sie zum Sortieren, wie Konten im Kontomenü erscheinen",
+        "active": "Aktuell aktives Konto",
+        "default_badge": "Standardkonto",
+        "set_default": "Als Standard festlegen",
+        "switch_to": "Zu diesem Konto wechseln",
+        "move_up": "Nach oben",
+        "move_down": "Nach unten",
+        "drag_handle": "Zum Sortieren ziehen",
+        "add": "Konto hinzufügen"
       }
     },
     "security": {
