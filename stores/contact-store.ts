@@ -37,10 +37,27 @@ export function getContactPrimaryEmail(contact: ContactCard): string {
   return Object.values(contact.emails)[0]?.address || '';
 }
 
+// Some JMAP servers (notably Stalwart, see issue #307) emit photo data URIs
+// without a mediatype, like `data:base64,...` or `data:;base64,...`. Per
+// RFC 2397 the missing/empty mediatype defaults to `text/plain`, so browsers
+// won't render the bytes as an image. Rewrite to include a mediatype.
+export function normalizeContactPhotoUri(uri: string, mediaType?: string): string {
+  const mime = mediaType && mediaType.includes('/') ? mediaType : 'image/jpeg';
+  if (uri.startsWith('data:base64,')) {
+    return `data:${mime};base64,${uri.slice('data:base64,'.length)}`;
+  }
+  if (uri.startsWith('data:;base64,')) {
+    return `data:${mime};base64,${uri.slice('data:;base64,'.length)}`;
+  }
+  return uri;
+}
+
 export function getContactPhotoUri(contact: ContactCard): string | undefined {
   if (!contact.media) return undefined;
   for (const media of Object.values(contact.media)) {
-    if (media.kind === 'photo' && media.uri) return media.uri;
+    if (media.kind === 'photo' && media.uri) {
+      return normalizeContactPhotoUri(media.uri, media.mediaType);
+    }
   }
   return undefined;
 }

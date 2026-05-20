@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useContactStore } from '../contact-store';
+import { useContactStore, getContactPhotoUri, normalizeContactPhotoUri } from '../contact-store';
 import type { ContactCard } from '@/lib/jmap/types';
 
 vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-0000-0000-000000000000' });
@@ -493,6 +493,46 @@ describe('contact-store', () => {
       expect(count).toBe(2);
       expect(useContactStore.getState().contacts).toHaveLength(2);
       expect(useContactStore.getState().contacts[0].id).toMatch(/^local-/);
+    });
+  });
+
+  describe('normalizeContactPhotoUri', () => {
+    it('rewrites malformed data:base64,... URIs using the media mediaType', () => {
+      expect(normalizeContactPhotoUri('data:base64,AAAA', 'image/png'))
+        .toBe('data:image/png;base64,AAAA');
+    });
+
+    it('rewrites data:;base64,... URIs using the media mediaType', () => {
+      expect(normalizeContactPhotoUri('data:;base64,AAAA', 'image/gif'))
+        .toBe('data:image/gif;base64,AAAA');
+    });
+
+    it('defaults to image/jpeg when no mediaType is available', () => {
+      expect(normalizeContactPhotoUri('data:base64,AAAA'))
+        .toBe('data:image/jpeg;base64,AAAA');
+    });
+
+    it('leaves well-formed data URIs unchanged', () => {
+      const good = 'data:image/png;base64,AAAA';
+      expect(normalizeContactPhotoUri(good)).toBe(good);
+    });
+
+    it('leaves http(s) URIs unchanged', () => {
+      const url = 'https://example.com/photo.jpg';
+      expect(normalizeContactPhotoUri(url)).toBe(url);
+    });
+  });
+
+  describe('getContactPhotoUri', () => {
+    it('returns a normalized data URI for malformed Stalwart photos (#307)', () => {
+      const contact = makeContact({
+        media: { m0: { kind: 'photo', uri: 'data:base64,AAAA', mediaType: 'image/png' } },
+      });
+      expect(getContactPhotoUri(contact)).toBe('data:image/png;base64,AAAA');
+    });
+
+    it('returns undefined when no photo media is present', () => {
+      expect(getContactPhotoUri(makeContact())).toBeUndefined();
     });
   });
 

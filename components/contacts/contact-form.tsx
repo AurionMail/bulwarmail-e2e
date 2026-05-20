@@ -6,6 +6,7 @@ import { X, Plus, ChevronDown, ChevronRight, User, Building, MapPin, Globe, Cake
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
+import { normalizeContactPhotoUri } from "@/stores/contact-store";
 import { cn } from "@/lib/utils";
 import type { ContactCard, ContactOnlineService, ContactAnniversary, ContactPersonalInfo, AddressBook, AnniversaryDate, PartialDate, ContactAddress, ContactMedia } from "@/lib/jmap/types";
 
@@ -341,7 +342,9 @@ export function ContactForm({ contact, addressBooks, allKeywords, defaultAddress
   const initialPhotoEntry = useMemo(() => {
     if (!contact?.media) return null;
     for (const [key, m] of Object.entries(contact.media)) {
-      if (m.kind === "photo" && m.uri) return { key, uri: m.uri, mediaType: m.mediaType };
+      if (m.kind === "photo" && m.uri) {
+        return { key, uri: normalizeContactPhotoUri(m.uri, m.mediaType), mediaType: m.mediaType };
+      }
     }
     return null;
   }, [contact]);
