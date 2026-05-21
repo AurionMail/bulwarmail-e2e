@@ -1962,6 +1962,7 @@
     "delete_confirm": "Möchten Sie diesen Kontakt wirklich löschen?",
     "local_mode": "Kontakte werden lokal gespeichert (Server unterstützt kein JMAP Contacts)",
     "back_to_contacts": "Zurück zu Kontakten",
+    "back_to_email": "Zurück zur E-Mail",
     "tabs": {
       "all": "Alle",
       "groups": "Gruppen"

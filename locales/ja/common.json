@@ -1950,6 +1950,7 @@
     "delete_confirm": "この連絡先を削除してもよろしいですか？",
     "local_mode": "連絡先はローカルに保存されています（サーバーがJMAPコンタクトをサポートしていません）",
     "back_to_contacts": "連絡先に戻る",
+    "back_to_email": "メールに戻る",
     "tabs": {
       "all": "すべて",
       "groups": "グループ"

@@ -1950,6 +1950,7 @@
     "delete_confirm": "정말 이 연락처를 삭제할까요?",
     "local_mode": "연락처가 로컬에 저장돼요 (서버가 JMAP Contacts를 지원하지 않아요)",
     "back_to_contacts": "연락처로 돌아가기",
+    "back_to_email": "이메일로 돌아가기",
     "tabs": {
       "all": "전체",
       "groups": "그룹"

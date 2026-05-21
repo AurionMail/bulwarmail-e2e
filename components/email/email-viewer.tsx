@@ -65,6 +65,7 @@ import {
   PenSquare,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 import type { Attachment as PostalMimeAttachment } from 'postal-mime';
 import { useSettingsStore, KEYWORD_PALETTE } from "@/stores/settings-store";
 import { useUIStore } from "@/stores/ui-store";
@@ -1137,9 +1138,34 @@ export function EmailViewer({
   const [contactSidebarEmail, setContactSidebarEmail] = useState<string | null>(null);
   const contacts = useContactStore((s) => s.contacts);
   const { isMobile: isMobileDevice } = useDeviceDetection();
+  const router = useRouter();
 
   const handleViewContactSidebar = (contact: ContactCard | null, recipientEmail: string) => {
-    if (isMobileDevice) return; // no sidebar on mobile
+    if (isMobileDevice) {
+      // No room for a sidebar on mobile — send the user to the contacts page
+      // with params describing what to show. The `from=email` flag turns the
+      // page's mobile back button into a router.back() that returns here.
+      const allRecipients = [
+        ...(email?.from || []),
+        ...(email?.to || []),
+        ...(email?.cc || []),
+        ...(email?.bcc || []),
+        ...(email?.replyTo || []),
+      ];
+      const recipientName = allRecipients.find(
+        (r) => r.email.toLowerCase() === recipientEmail.toLowerCase()
+      )?.name;
+      const params = new URLSearchParams();
+      if (contact) {
+        params.set('contactId', contact.id);
+      } else {
+        params.set('addEmail', recipientEmail);
+        if (recipientName) params.set('addName', recipientName);
+      }
+      params.set('from', 'email');
+      router.push(`/contacts?${params.toString()}`);
+      return;
+    }
     setContactSidebarEmail(recipientEmail);
   };
 

@@ -52,6 +52,8 @@ interface ContactFormProps {
   addressBooks?: AddressBook[];
   allKeywords?: string[];
   defaultAddressBookId?: string;
+  /** Prefills the create form (ignored when `contact` is set). */
+  prefill?: { email?: string; name?: string };
   onSave: (data: Partial<ContactCard>) => Promise<void>;
   onCancel: () => void;
 }
@@ -145,9 +147,21 @@ function Select({ value, onChange, children, className }: {
   );
 }
 
-export function ContactForm({ contact, addressBooks, allKeywords, defaultAddressBookId, onSave, onCancel }: ContactFormProps) {
+export function ContactForm({ contact, addressBooks, allKeywords, defaultAddressBookId, prefill, onSave, onCancel }: ContactFormProps) {
   const t = useTranslations("contacts.form");
   const isEditing = !!contact;
+
+  // Split a free-form display name into given/surname for prefill.
+  const prefillGivenName = (() => {
+    if (contact || !prefill?.name) return "";
+    const parts = prefill.name.trim().split(/\s+/);
+    return parts[0] || "";
+  })();
+  const prefillSurname = (() => {
+    if (contact || !prefill?.name) return "";
+    const parts = prefill.name.trim().split(/\s+/);
+    return parts.slice(1).join(" ");
+  })();
 
   // Accept JSContact-standard kinds (RFC 9553) and legacy vCard-style aliases.
   const findComponent = (...kinds: string[]) =>
@@ -215,9 +229,9 @@ export function ContactForm({ contact, addressBooks, allKeywords, defaultAddress
   }
 
   const [prefix, setPrefix] = useState(findComponent("title", "prefix"));
-  const [givenName, setGivenName] = useState(findComponent("given"));
+  const [givenName, setGivenName] = useState(findComponent("given") || prefillGivenName);
   const [additionalName, setAdditionalName] = useState(findComponent("given2", "additional", "middle"));
-  const [surname, setSurname] = useState(findComponent("surname"));
+  const [surname, setSurname] = useState(findComponent("surname") || prefillSurname);
   const [suffix, setSuffix] = useState(findComponent("generation", "suffix"));
 
   const [nickname, setNickname] = useState(
@@ -231,7 +245,7 @@ export function ContactForm({ contact, addressBooks, allKeywords, defaultAddress
         context: e.contexts?.work ? "work" : e.contexts?.private ? "private" : "",
       }));
     }
-    return [{ address: "", context: "" }];
+    return [{ address: prefill?.email || "", context: "" }];
   });
 
   const [phones, setPhones] = useState<PhoneEntry[]>(() => {

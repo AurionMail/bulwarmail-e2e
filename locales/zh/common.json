@@ -1950,6 +1950,7 @@
     "delete_confirm": "您确定要删除此联系人吗？",
     "local_mode": "联系人存储在本地（服务器不支持 JMAP 联系人）",
     "back_to_contacts": "返回联系人",
+    "back_to_email": "返回邮件",
     "tabs": {
       "all": "全部",
       "groups": "群组"

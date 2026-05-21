@@ -1950,6 +1950,7 @@
     "delete_confirm": "Weet u zeker dat u dit contact wilt verwijderen?",
     "local_mode": "Contacten worden lokaal opgeslagen (server ondersteunt geen JMAP Contacts)",
     "back_to_contacts": "Terug naar contacten",
+    "back_to_email": "Terug naar e-mail",
     "tabs": {
       "all": "Alle",
       "groups": "Groepen"

@@ -1950,6 +1950,7 @@
     "delete_confirm": "Bu kişiyi silmek istediğinizden emin misiniz?",
     "local_mode": "Kişiler yerel olarak saklanıyor (sunucu JMAP Kişilerini desteklemiyor)",
     "back_to_contacts": "Kişilere geri dön",
+    "back_to_email": "E-postaya geri dön",
     "tabs": {
       "all": "Tümü",
       "groups": "Gruplar"

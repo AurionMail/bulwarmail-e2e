@@ -1950,6 +1950,7 @@
     "delete_confirm": "Sei sicuro di voler eliminare questo contatto?",
     "local_mode": "I contatti sono salvati localmente (il server non supporta JMAP Contacts)",
     "back_to_contacts": "Torna ai contatti",
+    "back_to_email": "Torna all'e-mail",
     "tabs": {
       "all": "Tutti",
       "groups": "Gruppi"

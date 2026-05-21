@@ -1950,6 +1950,7 @@
     "delete_confirm": "Opravdu chcete odstranit tento kontakt?",
     "local_mode": "Kontakty jsou uloženy lokálně (server nepodporuje JMAP Contacts)",
     "back_to_contacts": "Zpět na kontakty",
+    "back_to_email": "Zpět na e-mail",
     "tabs": {
       "all": "Všechny",
       "groups": "Skupiny"

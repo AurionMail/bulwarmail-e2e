@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { ArrowLeft, Users, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -93,6 +95,8 @@ export default function ContactsPage() {
   const [renamingAddressBook, setRenamingAddressBook] = useState<AddressBook | null>(null);
   const [sharingAddressBookId, setSharingAddressBookId] = useState<string | null>(null);
   const [defaultBookIdForCreate, setDefaultBookIdForCreate] = useState<string | undefined>(undefined);
+  const [createPrefill, setCreatePrefill] = useState<{ email?: string; name?: string } | undefined>(undefined);
+  const [returnToEmail, setReturnToEmail] = useState(false);
   const [renamingKeyword, setRenamingKeyword] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const hasFetched = useRef(false);
@@ -100,6 +104,12 @@ export default function ContactsPage() {
   const isMobile = useIsMobile();
   const isDesktop = useIsDesktop();
   const isEmbedded = useIsEmbedded();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // One-shot intent flag: only consume the URL params on the first render that
+  // has them. After applying, we strip the query so a later refresh or
+  // re-mount doesn't re-trigger the navigation.
+  const intentAppliedRef = useRef(false);
   // Narrow pane (Pro split or small window): the categories sidebar collapses
   // into a burger-toggled overlay.
   const isNarrow = !isDesktop;
@@ -153,6 +163,29 @@ export default function ContactsPage() {
       fetchContacts(client);
     }
   }, [client, supportsSync, fetchContacts, isEmbedded]);
+
+  // Consume one-shot URL params (set by the mobile recipient popover when no
+  // sidebar is available) and strip them so a refresh doesn't replay the
+  // intent. `from=email` flips the mobile back button to `router.back()`.
+  useEffect(() => {
+    if (intentAppliedRef.current) return;
+    const contactId = searchParams.get('contactId');
+    const addEmail = searchParams.get('addEmail');
+    const addName = searchParams.get('addName');
+    const from = searchParams.get('from');
+    if (!contactId && !addEmail && !from) return;
+    intentAppliedRef.current = true;
+    if (from === 'email') setReturnToEmail(true);
+    if (contactId) {
+      setSelectedContact(contactId);
+      setView('detail');
+    } else if (addEmail) {
+      setCreatePrefill({ email: addEmail, name: addName ?? undefined });
+      setSelectedContact(null);
+      setView('create');
+    }
+    router.replace('/contacts');
+  }, [searchParams, router, setSelectedContact]);
 
   // Intercept browser refresh gestures (F5, Ctrl/Cmd+R, pull-to-refresh)
   // and refresh contacts via JMAP instead of reloading the page.
@@ -365,8 +398,14 @@ export default function ContactsPage() {
       toast.success(t("toast.created"));
     }
     setDefaultBookIdForCreate(undefined);
+    setCreatePrefill(undefined);
+    if (returnToEmail) {
+      setReturnToEmail(false);
+      router.back();
+      return;
+    }
     setView("list");
-  }, [supportsSync, client, createContact, addLocalContact, t]);
+  }, [supportsSync, client, createContact, addLocalContact, t, returnToEmail, router]);
 
   const handleSaveEdit = useCallback(async (data: Partial<ContactCard>) => {
     if (!selectedContact) return;
@@ -383,6 +422,14 @@ export default function ContactsPage() {
 
   const handleCancel = () => {
     setDefaultBookIdForCreate(undefined);
+    // Came from email → cancel returns to the email instead of the contact list.
+    if (returnToEmail && view === "create") {
+      setCreatePrefill(undefined);
+      setReturnToEmail(false);
+      router.back();
+      return;
+    }
+    if (view === "create") setCreatePrefill(undefined);
     if (view === "group-create" || view === "group-edit") {
       setView(selectedGroup ? "group-detail" : "list");
     } else if (view === "bulk-add-to-group") {
@@ -554,7 +601,7 @@ export default function ContactsPage() {
   const renderRightPanel = () => {
     switch (view) {
       case "create":
-        return <ContactForm addressBooks={addressBooks} allKeywords={allKeywords} defaultAddressBookId={defaultBookIdForCreate} onSave={handleSaveNew} onCancel={handleCancel} />;
+        return <ContactForm addressBooks={addressBooks} allKeywords={allKeywords} defaultAddressBookId={defaultBookIdForCreate} prefill={createPrefill} onSave={handleSaveNew} onCancel={handleCancel} />;
 
       case "edit":
         if (!selectedContact) return null;
@@ -686,6 +733,12 @@ export default function ContactsPage() {
   const showRightPanel = !isMobile || view !== "list";
 
   const mobileBackToList = () => {
+    if (returnToEmail) {
+      setReturnToEmail(false);
+      setCreatePrefill(undefined);
+      router.back();
+      return;
+    }
     setView("list");
     clearSelection();
   };
@@ -853,7 +906,7 @@ export default function ContactsPage() {
                     className="touch-manipulation"
                   >
                     <ArrowLeft className="w-4 h-4 mr-2" />
-                    {t("back_to_contacts")}
+                    {returnToEmail ? t("back_to_email") : t("back_to_contacts")}
                   </Button>
                 </div>
               )}

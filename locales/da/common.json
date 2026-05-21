@@ -1950,6 +1950,7 @@
     "delete_confirm": "Er du sikker på, at du vil slette denne kontakt?",
     "local_mode": "Kontakter gemmes lokalt (serveren understøtter ikke JMAP-kontakter)",
     "back_to_contacts": "Tilbage til kontakter",
+    "back_to_email": "Tilbage til e-mail",
     "tabs": {
       "all": "Alle",
       "groups": "Grupper"

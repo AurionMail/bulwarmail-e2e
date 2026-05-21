@@ -1946,6 +1946,7 @@
     "delete_confirm": "Vai tiešām vēlaties dzēst šo kontaktu?",
     "local_mode": "Kontakti tiek glabāti lokāli (serveris neatbalsta JMAP Contacts)",
     "back_to_contacts": "Atpakaļ pie kontaktiem",
+    "back_to_email": "Atpakaļ pie e-pasta",
     "tabs": {
       "all": "Visi",
       "groups": "Grupas"
