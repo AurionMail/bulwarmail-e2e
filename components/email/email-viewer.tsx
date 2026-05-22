@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import DOMPurify from "dompurify";
 import { Email, ContactCard, Mailbox } from "@/lib/jmap/types";
+import { emailExportFilename } from "@/lib/email-filename";
 import { EMAIL_IFRAME_SANITIZE_CONFIG, collapseBlockedImageContainers, escapeHtml, plainTextToSafeHtml, sanitizeEmailHtml, sanitizePlainTextRenderedHtml } from "@/lib/email-sanitization";
 import { hasMeaningfulHtmlBody } from "@/lib/signature-utils";
 import { Button } from "@/components/ui/button";
@@ -3056,8 +3057,7 @@ export function EmailViewer({
   const handleExportEmail = async () => {
     if (!email?.blobId || !client) return;
     try {
-      const subject = (email.subject || 'email').replace(/[<>:"/\\|?*]+/g, '_').slice(0, 100);
-      await client.downloadBlob(email.blobId, `${subject}.eml`, 'message/rfc822');
+      await client.downloadBlob(email.blobId, emailExportFilename(email), 'message/rfc822');
     } catch {
       toast.error(tNotifications('export_email_error'));
     }
