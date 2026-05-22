@@ -93,6 +93,8 @@ const EMAIL_LIST_PROPERTIES = [
   "subject",
   "preview",
   "hasAttachment",
+  // Needed so list rows can serve drag-out to the file system as .eml.
+  "blobId",
 ] as const;
 
 // Stalwart's default property list for Calendar/get omits shareWith, isVisible,
