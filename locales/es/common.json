@@ -752,7 +752,7 @@
     "keep_editing": "Seguir editando",
     "tabs": {
       "appearance": "Apariencia",
-      "language": "Idioma y Región",
+      "language": "Idioma, Región y Hora",
       "email": "Comportamiento del Correo",
       "composer": "Editor",
       "privacy": "Privacidad y Seguridad",
@@ -932,8 +932,8 @@
       }
     },
     "language_region": {
-      "title": "Idioma y Región",
-      "description": "Configure las preferencias de idioma y región",
+      "title": "Idioma, Región y Hora",
+      "description": "Idioma, formato de fecha, formato de hora y otras preferencias regionales",
       "language": {
         "label": "Idioma",
         "description": "Elija su idioma preferido",
@@ -942,10 +942,13 @@
       },
       "date_format": {
         "label": "Formato de Fecha",
-        "description": "Cómo se deben mostrar las fechas",
-        "regional": "Regional",
-        "iso": "ISO 8601",
-        "custom": "Personalizado"
+        "description": "Cómo se muestran las fechas en la lista de correos",
+        "smart": "Inteligente (según región)",
+        "relative": "Relativo (hace 1 h, hace 2 d)",
+        "full": "Fecha completa siempre",
+        "preview_today": "Hoy:",
+        "preview_this_week": "Esta semana:",
+        "preview_older": "Más antiguo:"
       },
       "time_format": {
         "label": "Formato de Hora",

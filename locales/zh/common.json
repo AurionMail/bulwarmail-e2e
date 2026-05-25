@@ -752,7 +752,7 @@
     "keep_editing": "继续编辑",
     "tabs": {
       "appearance": "外观",
-      "language": "语言及地区",
+      "language": "语言、地区与时间",
       "email": "邮件行为",
       "composer": "邮件撰写",
       "privacy": "隐私与安全",
@@ -932,8 +932,8 @@
       }
     },
     "language_region": {
-      "title": "语言及地区",
-      "description": "配置语言和区域首选项",
+      "title": "语言、地区与时间",
+      "description": "语言、日期格式、时间格式以及其他区域设置",
       "language": {
         "label": "语言",
         "description": "选择您的首选语言",
@@ -942,10 +942,13 @@
       },
       "date_format": {
         "label": "日期格式",
-        "description": "日期应如何显示",
-        "regional": "区域格式",
-        "iso": "ISO 8601",
-        "custom": "自定义"
+        "description": "电子邮件列表中日期的显示方式",
+        "smart": "智能（按地区）",
+        "relative": "相对时间（1 小时前、2 天前）",
+        "full": "始终完整日期",
+        "preview_today": "今天：",
+        "preview_this_week": "本周：",
+        "preview_older": "更早："
       },
       "time_format": {
         "label": "时间格式",

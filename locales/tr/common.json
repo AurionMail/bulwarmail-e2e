@@ -752,7 +752,7 @@
     "keep_editing": "Düzenlemeye devam et",
     "tabs": {
       "appearance": "Görünüm",
-      "language": "Dil ve Bölge",
+      "language": "Dil, Bölge ve Saat",
       "email": "E-posta Davranışı",
       "composer": "Yazıcı",
       "privacy": "Gizlilik ve Güvenlik",
@@ -932,8 +932,8 @@
       }
     },
     "language_region": {
-      "title": "Dil ve Bölge",
-      "description": "Dil ve bölgesel tercihleri yapılandırın",
+      "title": "Dil, Bölge ve Saat",
+      "description": "Dil, tarih biçimi, saat biçimi ve diğer bölgesel tercihler",
       "language": {
         "label": "Dil",
         "description": "Tercih ettiğiniz dili seçin",
@@ -942,10 +942,13 @@
       },
       "date_format": {
         "label": "Tarih Biçimi",
-        "description": "Tarihlerin nasıl görüntüleneceği",
-        "regional": "Bölgesel",
-        "iso": "ISO 8601",
-        "custom": "Özel"
+        "description": "Tarihlerin e-posta listesinde nasıl gösterileceği",
+        "smart": "Akıllı (bölgeye duyarlı)",
+        "relative": "Göreceli (1 sa önce, 2 g önce)",
+        "full": "Her zaman tam tarih",
+        "preview_today": "Bugün:",
+        "preview_this_week": "Bu hafta:",
+        "preview_older": "Daha eski:"
       },
       "time_format": {
         "label": "Saat Biçimi",

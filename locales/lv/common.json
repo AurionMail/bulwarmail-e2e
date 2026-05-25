@@ -752,7 +752,7 @@
     "keep_editing": "Turpināt rediģēšanu",
     "tabs": {
       "appearance": "Izskats",
-      "language": "Valoda un reģions",
+      "language": "Valoda, reģions un laiks",
       "email": "Pasta darbība",
       "composer": "Redaktors",
       "privacy": "Privātums un drošība",
@@ -932,8 +932,8 @@
       }
     },
     "language_region": {
-      "title": "Valoda un reģions",
-      "description": "Iestatiet valodas un reģionālās preferences",
+      "title": "Valoda, reģions un laiks",
+      "description": "Valoda, datuma formāts, laika formāts un citas reģionālās preferences",
       "language": {
         "label": "Valoda",
         "description": "Izvēlieties vēlamo valodu",
@@ -942,10 +942,13 @@
       },
       "date_format": {
         "label": "Datuma formāts",
-        "description": "Kā attēlot datumus",
-        "regional": "Reģionālais",
-        "iso": "ISO 8601",
-        "custom": "Pielāgots"
+        "description": "Kā datumi tiek attēloti e-pasta sarakstā",
+        "smart": "Gudrs (atbilstoši reģionam)",
+        "relative": "Relatīvs (pirms 1 st., pirms 2 d.)",
+        "full": "Vienmēr pilns datums",
+        "preview_today": "Šodien:",
+        "preview_this_week": "Šajā nedēļā:",
+        "preview_older": "Vecāks:"
       },
       "time_format": {
         "label": "Laika formāts",

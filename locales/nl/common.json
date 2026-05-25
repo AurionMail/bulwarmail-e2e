@@ -752,7 +752,7 @@
     "keep_editing": "Doorgaan met bewerken",
     "tabs": {
       "appearance": "Uiterlijk",
-      "language": "Taal & Regio",
+      "language": "Taal, Regio & Tijd",
       "email": "E-mailgedrag",
       "composer": "Opstellen",
       "privacy": "Privacy & Beveiliging",
@@ -932,8 +932,8 @@
       }
     },
     "language_region": {
-      "title": "Taal & Regio",
-      "description": "Configureer taal- en regiovoorkeuren",
+      "title": "Taal, Regio & Tijd",
+      "description": "Taal, datumnotatie, tijdnotatie en andere regionale voorkeuren",
       "language": {
         "label": "Taal",
         "description": "Kies je voorkeurstaal",
@@ -942,10 +942,13 @@
       },
       "date_format": {
         "label": "Datumnotatie",
-        "description": "Hoe datums moeten worden weergegeven",
-        "regional": "Regionaal",
-        "iso": "ISO 8601",
-        "custom": "Aangepast"
+        "description": "Hoe datums worden weergegeven in de e-maillijst",
+        "smart": "Slim (regionaal)",
+        "relative": "Relatief (1 u geleden, 2 d geleden)",
+        "full": "Altijd volledige datum",
+        "preview_today": "Vandaag:",
+        "preview_this_week": "Deze week:",
+        "preview_older": "Ouder:"
       },
       "time_format": {
         "label": "Tijdnotatie",

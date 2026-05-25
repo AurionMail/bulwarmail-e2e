@@ -755,7 +755,7 @@
     "search_no_results": "Ingen match i indstillinger",
     "tabs": {
       "appearance": "Udseende",
-      "language": "Sprog & region",
+      "language": "Sprog, region & tid",
       "email": "E-mail-adfærd",
       "composer": "Komponist",
       "privacy": "Privatliv & sikkerhed",
@@ -935,8 +935,8 @@
       }
     },
     "language_region": {
-      "title": "Sprog & region",
-      "description": "Konfigurér sprog og regionale præferencer",
+      "title": "Sprog, region & tid",
+      "description": "Sprog, datoformat, tidsformat og andre regionale indstillinger",
       "language": {
         "label": "Sprog",
         "description": "Vælg dit foretrukne sprog",
@@ -945,10 +945,13 @@
       },
       "date_format": {
         "label": "Datoformat",
-        "description": "Hvordan datoer skal vises",
-        "regional": "Regionalt",
-        "iso": "ISO 8601",
-        "custom": "Brugerdefineret"
+        "description": "Sådan vises datoer på e-mail-listen",
+        "smart": "Smart (regionalt)",
+        "relative": "Relativ (for 1 t siden, for 2 d siden)",
+        "full": "Altid fuld dato",
+        "preview_today": "I dag:",
+        "preview_this_week": "Denne uge:",
+        "preview_older": "Ældre:"
       },
       "time_format": {
         "label": "Tidsformat",

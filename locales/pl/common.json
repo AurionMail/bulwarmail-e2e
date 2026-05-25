@@ -752,7 +752,7 @@
     "keep_editing": "Kontynuuj edycję",
     "tabs": {
       "appearance": "Wygląd",
-      "language": "Język i region",
+      "language": "Język, region i czas",
       "email": "Zachowanie poczty e-mail",
       "composer": "Redagowanie",
       "privacy": "Prywatność i bezpieczeństwo",
@@ -932,8 +932,8 @@
       }
     },
     "language_region": {
-      "title": "Język i region",
-      "description": "Skonfiguruj preferencje językowe i regionalne",
+      "title": "Język, region i czas",
+      "description": "Język, format daty, format godziny i inne preferencje regionalne",
       "language": {
         "label": "Język",
         "description": "Wybierz preferowany język",
@@ -942,10 +942,13 @@
       },
       "date_format": {
         "label": "Format daty",
-        "description": "Jak mają być wyświetlane daty",
-        "regional": "Regionalny",
-        "iso": "ISO 8601",
-        "custom": "Niestandardowy"
+        "description": "Jak daty są wyświetlane na liście e-maili",
+        "smart": "Inteligentny (regionalny)",
+        "relative": "Względny (1 g temu, 2 d temu)",
+        "full": "Zawsze pełna data",
+        "preview_today": "Dzisiaj:",
+        "preview_this_week": "W tym tygodniu:",
+        "preview_older": "Starsze:"
       },
       "time_format": {
         "label": "Format czasu",
