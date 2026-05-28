@@ -854,7 +854,6 @@ export function EmailComposer({
     return () => window.removeEventListener('keydown', handleTemplateKey);
   }, []);
 
-
   const addFiles = useCallback(async (files: File[]) => {
     if (!client || files.length === 0) return;
 
@@ -1575,21 +1574,23 @@ export function EmailComposer({
     }
   };
 
-  // Ctrl+Enter (Windows/Linux) / Cmd+Enter (macOS) sends the open
-  // compose draft — same as every other major mail client. Fires
-  // even when focus is inside the To/Cc/Bcc chips, subject input,
-  // body textarea, or the rich-text editor's contentEditable region.
-  // Plain Enter in the body still inserts a newline; only Enter +
-  // the platform modifier sends. handleSend is rebound every render,
-  // so we route through a ref to keep the window listener stable.
-  const handleSendRef = useRef<(skipAttachmentCheck?: boolean) => Promise<void>>();
+  // Ctrl+Enter (Win/Linux) / Cmd+Enter (macOS) sends the open compose
+  // draft. Scoped to events whose target lives inside this composer's
+  // DOM tree — in Pro mode multiple composer tabs can be mounted at
+  // once (inactive tabs are CSS-hidden, not unmounted), so a window
+  // listener would otherwise fire every mounted composer's handleSend
+  // on a single keystroke. handleSend is rebound every render, so we
+  // route through a ref to keep the listener stable.
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
+  const handleSendRef = useRef<((skipAttachmentCheck?: boolean) => Promise<void>) | undefined>(undefined);
   handleSendRef.current = handleSend;
   useEffect(() => {
     const handleSendShortcut = (e: KeyboardEvent) => {
       if (e.key !== 'Enter') return;
       if (!(e.ctrlKey || e.metaKey)) return;
-      // Don't hijack autocomplete-confirm or chip-commit Enters.
       if (e.altKey || e.shiftKey) return;
+      const root = composerRootRef.current;
+      if (!root || !(e.target instanceof Node) || !root.contains(e.target)) return;
       e.preventDefault();
       void handleSendRef.current?.();
     };
@@ -1636,7 +1637,7 @@ export function EmailComposer({
   };
 
   return (
-    <div className={cn("flex h-full bg-background", className)}>
+    <div ref={composerRootRef} className={cn("flex h-full bg-background", className)}>
       <PluginSlot
         name="composer-sidebar"
         className="hidden md:flex shrink-0 h-full overflow-hidden border-r border-border"
