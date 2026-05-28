@@ -36,16 +36,29 @@ describe('config API route', () => {
     delete process.env.LOGIN_IMPRINT_URL;
     delete process.env.LOGIN_PRIVACY_POLICY_URL;
     delete process.env.LOGIN_WEBSITE_URL;
+    delete process.env.DOMAIN_BRANDING;
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
   });
 
-  async function getConfig() {
+  function mockRequest(headers: Record<string, string> = {}): unknown {
+    const lc: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headers)) lc[k.toLowerCase()] = v;
+    return {
+      headers: {
+        get(name: string) {
+          return lc[name.toLowerCase()] ?? null;
+        },
+      },
+    };
+  }
+
+  async function getConfig(headers?: Record<string, string>) {
     // Re-import to pick up env changes
     const { GET } = await import('@/app/api/config/route');
-    const response = await GET();
+    const response = await GET(mockRequest(headers) as Parameters<typeof GET>[0]);
     return response.json();
   }
 
@@ -191,5 +204,71 @@ describe('config API route', () => {
     expect(config.faviconUrl).toBe('/branding/custom-favicon.svg');
     expect(config.appLogoLightUrl).toBe('/branding/my-logo.svg');
     expect(config.appLogoDarkUrl).toBe('/branding/my-logo-white.svg');
+  });
+
+  describe('per-domain branding overrides', () => {
+    it('applies overrides for the matching host', async () => {
+      process.env.LOGIN_COMPANY_NAME = 'Default Co';
+      process.env.LOGIN_WEBSITE_URL = 'https://default.example';
+      process.env.DOMAIN_BRANDING = JSON.stringify([
+        {
+          host: 'mail1.example.com',
+          loginCompanyName: 'Brand One',
+          loginWebsiteUrl: 'https://one.example',
+        },
+      ]);
+
+      const config = await getConfig({ host: 'mail1.example.com' });
+
+      expect(config.loginCompanyName).toBe('Brand One');
+      expect(config.loginWebsiteUrl).toBe('https://one.example');
+    });
+
+    it('falls through to the global value when the host has no entry', async () => {
+      process.env.LOGIN_COMPANY_NAME = 'Default Co';
+      process.env.DOMAIN_BRANDING = JSON.stringify([
+        { host: 'mail1.example.com', loginCompanyName: 'Brand One' },
+      ]);
+
+      const config = await getConfig({ host: 'unmapped.example.com' });
+
+      expect(config.loginCompanyName).toBe('Default Co');
+    });
+
+    it('falls through field-by-field when the matching entry omits a field', async () => {
+      process.env.LOGIN_COMPANY_NAME = 'Default Co';
+      process.env.LOGIN_WEBSITE_URL = 'https://default.example';
+      process.env.DOMAIN_BRANDING = JSON.stringify([
+        { host: 'mail1.example.com', loginCompanyName: 'Brand One' },
+      ]);
+
+      const config = await getConfig({ host: 'mail1.example.com' });
+
+      expect(config.loginCompanyName).toBe('Brand One');
+      expect(config.loginWebsiteUrl).toBe('https://default.example');
+    });
+
+    it('prefers X-Forwarded-Host over Host', async () => {
+      process.env.DOMAIN_BRANDING = JSON.stringify([
+        { host: 'public.example.com', loginCompanyName: 'Public' },
+      ]);
+
+      const config = await getConfig({
+        host: 'internal.example.com',
+        'x-forwarded-host': 'public.example.com',
+      });
+
+      expect(config.loginCompanyName).toBe('Public');
+    });
+
+    it('strips the port from the host header before matching', async () => {
+      process.env.DOMAIN_BRANDING = JSON.stringify([
+        { host: 'mail1.example.com', loginCompanyName: 'Brand One' },
+      ]);
+
+      const config = await getConfig({ host: 'mail1.example.com:8443' });
+
+      expect(config.loginCompanyName).toBe('Brand One');
+    });
   });
 });

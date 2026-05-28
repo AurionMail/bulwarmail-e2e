@@ -4,6 +4,11 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { configManager } from '@/lib/admin/config-manager';
 import { getConfigDir } from '@/lib/admin/paths';
+import {
+  matchDomainBranding,
+  parseDomainBranding,
+  pickRequestHost,
+} from '@/lib/admin/domain-branding';
 
 const VALID_SIZES = new Set([192, 512]);
 
@@ -33,7 +38,7 @@ async function fetchSourceImage(iconUrl: string): Promise<Buffer> {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ size: string }> }
 ) {
   const { size: sizeParam } = await params;
@@ -44,8 +49,15 @@ export async function GET(
   }
 
   await configManager.ensureLoaded();
+  const host = pickRequestHost(req);
+  const domainOverrides = matchDomainBranding(
+    host,
+    parseDomainBranding(configManager.get<unknown>('domainBranding', [])),
+  );
   const sources = configManager.getAllWithSources();
   const iconUrl =
+    domainOverrides.pwaIconUrl ||
+    domainOverrides.faviconUrl ||
     (sources.pwaIconUrl?.source !== 'default' ? (sources.pwaIconUrl?.value as string) : '') ||
     (sources.faviconUrl?.source !== 'default' ? (sources.faviconUrl?.value as string) : '');
   if (!iconUrl) {
@@ -55,6 +67,7 @@ export async function GET(
   const pngHeaders = {
     'Content-Type': 'image/png',
     'Cache-Control': 'public, max-age=86400',
+    Vary: 'Host, X-Forwarded-Host',
   };
 
   const cacheKey = `${size}|${iconUrl}`;
