@@ -55,7 +55,7 @@ import { useProMultiAccountMailboxes } from "@/hooks/use-pro-multi-account-mailb
 import { Input } from "@/components/ui/input";
 import { FilePreviewModal } from "@/components/files/file-preview-modal";
 import { isFilePreviewable } from "@/lib/file-preview";
-import { appendPlainTextSignature } from "@/lib/signature-utils";
+import { appendHtmlSignature, appendPlainTextSignature } from "@/lib/signature-utils";
 import { computeReplyThreadingHeaders } from "@/lib/email-threading";
 import { EML_IMPORT_ACCEPT, expandImportableEmails } from "@/lib/eml-import";
 import { resolveReplyFrom } from "@/lib/reply-identity";
@@ -2090,9 +2090,21 @@ export default function Home() {
 
     // Append signature from the sending identity (fall back to primary
     // when the reply-from lives on the same identity but a different alias).
-    const finalBody = appendPlainTextSignature(body, sendingIdentity, {
-      separator: useSettingsStore.getState().signatureSeparatorEnabled,
-    });
+    const separator = useSettingsStore.getState().signatureSeparatorEnabled;
+    const finalBody = appendPlainTextSignature(body, sendingIdentity, { separator });
+
+    // When the identity has an HTML signature, send a matching HTML body so the
+    // signature keeps its formatting; appendPlainTextSignature would otherwise
+    // flatten it to plain text. Text-only identities keep the plain-text-only
+    // behavior (htmlBody stays undefined).
+    const escapedBody = body
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+    const finalHtmlBody = sendingIdentity?.htmlSignature?.trim()
+      ? appendHtmlSignature(`<div>${escapedBody}</div>`, sendingIdentity, { separator })
+      : undefined;
 
     const originalEmailId = selectedEmail.id;
     const sendDelaySeconds = useSettingsStore.getState().sendDelaySeconds;
@@ -2124,7 +2136,7 @@ export default function Home() {
       headerFromEmail,
       undefined,
       headerFromName,
-      undefined,
+      finalHtmlBody,
       undefined,
       threading?.inReplyTo,
       threading?.references,
