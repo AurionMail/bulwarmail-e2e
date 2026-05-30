@@ -26,7 +26,9 @@ const REPLY_TOKENS = [
   "回复",    // Chinese
   "回覆",    // Chinese traditional
   "답장",    // Korean
-  "R",       // Italian short form
+  // NB: deliberately no bare "R" token — a single letter would strip the first
+  // word of legitimate subjects like "R: budget 2024". The full "Re" covers
+  // the common Italian/English case anyway.
 ];
 
 const FORWARD_TOKENS = [
@@ -41,7 +43,7 @@ const FORWARD_TOKENS = [
   "RV",      // Spanish caps
   "Rvf",     // Spanish variant
   "Inol",    // Italian (Inoltro)
-  "I",       // Italian short
+  // NB: deliberately no bare "I" token — see the REPLY_TOKENS note above.
   "PD",      // Polish (Przekazane Dalej)
   "PR",      // Czech (Preposlat)
   "İlt",     // Turkish (Ilet)
