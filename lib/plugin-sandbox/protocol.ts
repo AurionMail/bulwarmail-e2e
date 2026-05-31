@@ -9,6 +9,7 @@
 // class instances.
 
 import type { SlotName } from '../plugin-types';
+import type { ThemeSnapshot } from './host-theme';
 
 // ─── Sandbox mode ────────────────────────────────────────────
 
@@ -62,6 +63,12 @@ export interface SlotInit {
    */
   extraProps: Record<string, unknown>;
   locale: string;
+  /**
+   * Resolved host theme (colour tokens, font stack, dark flag). The sandbox
+   * can't load globals.css/fonts cross-origin, so the runtime replays this as
+   * injected CSS + a `.dark` class. Host pushes updates via 'theme-change'.
+   */
+  theme: ThemeSnapshot;
 }
 
 export type InitPayload = BackgroundInit | SlotInit;
@@ -163,6 +170,9 @@ export interface HookInvokeMsg {
 
 export interface LocaleChangeMsg { type: 'locale-change'; locale: string; }
 
+/** Host → sandbox: the resolved theme changed; re-inject the slot's theme CSS. */
+export interface ThemeChangeMsg { type: 'theme-change'; theme: ThemeSnapshot; }
+
 export interface PropsUpdateMsg { type: 'props-update'; props: Record<string, unknown>; }
 
 export interface SlotShouldShowMsg {
@@ -178,6 +188,7 @@ export type HostToSandbox =
   | CallbackResponseMsg
   | HookInvokeMsg
   | LocaleChangeMsg
+  | ThemeChangeMsg
   | PropsUpdateMsg
   | SlotShouldShowMsg;
 

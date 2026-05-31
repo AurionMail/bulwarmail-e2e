@@ -11,6 +11,7 @@ import type { InstalledPlugin, SlotName } from '../plugin-types';
 import { dispatchApiCall } from './host-api';
 import { SANDBOX_PATH } from './protocol';
 import { withBasePath } from '../browser-navigation';
+import { snapshotHostTheme, type ThemeSnapshot } from './host-theme';
 import type {
   SandboxToHost, HostToSandbox, InitMsg, InitPayload,
 } from './protocol';
@@ -278,6 +279,12 @@ export class SandboxInstance {
     this.send({ type: 'locale-change', locale });
   }
 
+  /** Push a new resolved theme so the slot iframe re-injects its theme CSS. */
+  setTheme(theme: ThemeSnapshot): void {
+    if (this.destroyed) return;
+    this.send({ type: 'theme-change', theme });
+  }
+
   updateProps(props: Record<string, unknown>): void {
     if (this.destroyed) return;
     // Stale references would leak if we kept growing the table without
@@ -346,6 +353,7 @@ export function createSlotInstance(opts: SlotOptions): SandboxInstance {
     },
     extraProps: opts.extraProps,
     locale: opts.locale,
+    theme: snapshotHostTheme(),
   };
   return new SandboxInstance(opts.plugin, payload, opts.hostContainer, opts.onResize);
 }

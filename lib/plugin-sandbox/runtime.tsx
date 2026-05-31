@@ -27,6 +27,7 @@ import type {
   BackgroundInit,
   SlotInit,
 } from './protocol';
+import { themeSnapshotToCSS, type ThemeSnapshot } from './host-theme';
 import type { SlotName } from '../plugin-types';
 
 // ─── Module-scope state ──────────────────────────────────────
@@ -65,6 +66,28 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {};
 function sendToHost(msg: SandboxToHost): void {
   if (!parentWindow || !parentOrigin) return;
   parentWindow.postMessage(msg, parentOrigin);
+}
+
+// ─── Theme replay ────────────────────────────────────────────
+
+const THEME_STYLE_ID = '__plugin_host_theme';
+
+/**
+ * Replay a host theme snapshot inside the iframe: inject the token + font CSS
+ * and mirror the `.dark` class onto <html> so plugin styles that key off
+ * `.dark` (or read `var(--color-*)`) behave like the host. Idempotent — safe
+ * to call again on every 'theme-change'.
+ */
+function applyHostTheme(theme: ThemeSnapshot): void {
+  if (typeof document === 'undefined') return;
+  let styleEl = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = THEME_STYLE_ID;
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = themeSnapshotToCSS(theme);
+  document.documentElement.classList.toggle('dark', theme.dark);
 }
 
 function uid(): string {
@@ -310,6 +333,10 @@ async function bootBackground(payload: BackgroundInit): Promise<void> {
 }
 
 function bootSlot(payload: SlotInit): void {
+  // Replay the host theme before first paint so the slot never flashes the UA
+  // default serif font or a light-on-light/dark mismatch.
+  applyHostTheme(payload.theme);
+
   const api = buildPluginApi(payload.manifest);
   const exports = evaluateBundle(payload.code, api);
   pluginExports = exports;
@@ -460,6 +487,10 @@ function handleHostMessage(ev: MessageEvent): void {
 
     case 'locale-change':
       (globalThis as unknown as { __PLUGIN_LOCALE__?: string }).__PLUGIN_LOCALE__ = msg.locale;
+      break;
+
+    case 'theme-change':
+      applyHostTheme(msg.theme);
       break;
 
     case 'props-update':
