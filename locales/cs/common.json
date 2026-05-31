@@ -2814,6 +2814,7 @@
     "hint": "Klikněte na libovolnou zprávu vlevo pro začátek, nebo využijte průvodce níže."
   },
   "files": {
+    "open_in_new_tab": "Otevřít na nové kartě",
     "title": "Soubory",
     "search_placeholder": "Hledat soubory...",
     "empty_state_title": "Žádné soubory",

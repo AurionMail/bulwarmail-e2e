@@ -1,10 +1,47 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { X, Download, Loader2 } from "lucide-react";
+import { X, Download, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getFilePreviewKind } from "@/lib/file-preview";
+import dynamic from "next/dynamic";
+
+// pdf.js-based inline viewer for mobile (no native inline PDF viewer). Loaded
+// only on the mobile PDF path so pdfjs-dist + its worker never reach the
+// desktop bundle.
+const PdfMobileViewer = dynamic(
+  () => import("@/components/files/pdf-mobile-viewer").then((m) => m.PdfMobileViewer),
+  { ssr: false },
+);
+
+// Map a few well-known extensions back to canonical MIME types. Used when the
+// server returns application/octet-stream (or empty) for an attachment whose
+// actual type is obvious from the filename. The blob.type drives how browsers
+// render blob: URLs, so guessing wrong here means the inline preview silently
+// downgrades to a download.
+const EXT_TO_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  m4a: "audio/mp4",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  ogv: "video/ogg",
+};
+
+function inferMimeFromName(name: string): string | undefined {
+  const ext = name.toLowerCase().split(".").pop();
+  return ext ? EXT_TO_MIME[ext] : undefined;
+}
 
 interface FilePreviewModalProps {
   name: string;
@@ -111,6 +148,49 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent }: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [resolvedFileType, setResolvedFileType] = useState(() => getFilePreviewKind(name));
+  const [pdfInlineSupported, setPdfInlineSupported] = useState(true);
+
+  // Decide whether to render the PDF in a plain <iframe> (desktop) or with the
+  // pdf.js canvas viewer (mobile). navigator.pdfViewerEnabled is the standard
+  // signal and correctly reports false on Android Chrome (no inline viewer).
+  // iOS Safari is the exception: it reports true (it can show PDFs on top-frame
+  // navigation) yet renders only the FIRST page inside an <iframe> - a
+  // long-standing WebKit limitation - so it must use pdf.js too. Detect iOS
+  // (incl. iPadOS, which spoofs a "Macintosh" UA but exposes touch points).
+  useEffect(() => {
+    const nav = navigator as Navigator & { pdfViewerEnabled?: boolean };
+    const isIOS =
+      /iPad|iPhone|iPod/.test(nav.userAgent) ||
+      (nav.maxTouchPoints > 1 && /Macintosh/.test(nav.userAgent));
+    if (isIOS) {
+      setPdfInlineSupported(false);
+    } else if (typeof nav.pdfViewerEnabled === "boolean") {
+      setPdfInlineSupported(nav.pdfViewerEnabled);
+    }
+  }, []);
+
+  // Keep the latest onClose for the back-button handler without re-subscribing.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Make the Android/browser Back button close the preview instead of
+  // navigating the page underneath: push a throwaway history entry when the
+  // modal opens and close it on popstate. On a normal close (X / backdrop /
+  // Escape) the modal unmounts and we pop that entry ourselves, so the user's
+  // next Back isn't swallowed by it.
+  useEffect(() => {
+    window.history.pushState({ __filePreview: true }, "");
+    let poppedByBack = false;
+    const onPop = () => {
+      poppedByBack = true;
+      onCloseRef.current();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (!poppedByBack) window.history.back();
+    };
+  }, []);
 
   const fileType = resolvedFileType;
 
@@ -137,7 +217,25 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent }: 
           const text = await blob.text();
           if (!cancelled) setContent(text);
         } else {
-          revokeUrl = URL.createObjectURL(blob);
+          // Stalwart's download endpoint can return generic
+          // application/octet-stream for attachments even when the email's
+          // MIME structure declared application/pdf (etc.). The blob inherits
+          // that, so a blob: URL plugged into <iframe> looks like a binary
+          // stream and Chrome/Edge silently download it (with the blob UUID
+          // as filename) instead of rendering inline. Re-wrap with the most
+          // specific MIME we can resolve - prefer explicit attachment type,
+          // then filename-derived MIME, then whatever the blob came with.
+          const inferredFromName = inferMimeFromName(name);
+          const isUseless = (ty?: string) =>
+            !ty || ty === "application/octet-stream" || ty === "binary/octet-stream";
+          const effectiveType =
+            (contentType && !isUseless(contentType) ? contentType : undefined)
+            ?? inferredFromName
+            ?? blob.type;
+          const typedBlob = blob.type !== effectiveType
+            ? new Blob([blob], { type: effectiveType })
+            : blob;
+          revokeUrl = URL.createObjectURL(typedBlob);
           if (!cancelled) setObjectUrl(revokeUrl);
         }
       } catch {
@@ -173,6 +271,18 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent }: 
       <div className="flex items-center justify-between px-4 py-3 bg-background/90 backdrop-blur border-b border-border" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-medium truncate">{name}</h3>
         <div className="flex items-center gap-2">
+          {objectUrl && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title={t("open_in_new_tab")}
+              aria-label={t("open_in_new_tab")}
+              onClick={() => window.open(objectUrl, "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink className="w-4 h-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void onDownload()}>
             <Download className="w-4 h-4" />
           </Button>
@@ -231,19 +341,29 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent }: 
           />
         )}
 
-        {!loading && !error && fileType === "pdf" && objectUrl && (
-          <object
-            data={objectUrl}
-            type="application/pdf"
+        {!loading && !error && fileType === "pdf" && objectUrl && pdfInlineSupported && (
+          // <iframe> renders PDFs reliably across desktop Chromium, Firefox,
+          // and Safari from a blob: URL. <object> was prone to falling back to
+          // a silent download when the blob's Content-Type wasn't recognised.
+          <iframe
+            src={objectUrl}
             className="w-full max-w-5xl h-full rounded-lg bg-white"
-            aria-label={name}
+            title={name}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+
+        {!loading && !error && fileType === "pdf" && objectUrl && !pdfInlineSupported && (
+          // Mobile browsers can't show a PDF inline in an <iframe> (Android: a
+          // blank frame / silent download; iOS: only the first page), so render
+          // it with pdf.js (canvas) instead. The header's open-in-new-tab /
+          // download actions are the fallback if pdf.js can't render the doc.
+          <div
+            className="w-full max-w-3xl h-full overflow-auto rounded-lg bg-neutral-200 dark:bg-neutral-800 p-2"
             onClick={(e) => e.stopPropagation()}
           >
-            <Button onClick={() => void onDownload()}>
-              <Download className="w-4 h-4 mr-2" />
-              {t("download")}
-            </Button>
-          </object>
+            <PdfMobileViewer url={objectUrl} />
+          </div>
         )}
 
         {!loading && !error && fileType === "audio" && objectUrl && (

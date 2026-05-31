@@ -2814,6 +2814,7 @@
     "hint": "点击左侧的任意邮件即可开始，或参加下方的导览。"
   },
   "files": {
+    "open_in_new_tab": "在新标签页中打开",
     "title": "文件",
     "search_placeholder": "搜索文件...",
     "empty_state_title": "还没有文件",

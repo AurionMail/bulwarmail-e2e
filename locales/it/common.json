@@ -2814,6 +2814,7 @@
     "hint": "Clicca su un'email a sinistra per iniziare, oppure fai il tour."
   },
   "files": {
+    "open_in_new_tab": "Apri in una nuova scheda",
     "title": "File",
     "search_placeholder": "Cerca file...",
     "empty_state_title": "Nessun file ancora",

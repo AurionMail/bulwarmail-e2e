@@ -2837,6 +2837,7 @@
     "hint": "Klik på en e-mail til venstre for at komme i gang, eller tag rundvisningen nedenfor."
   },
   "files": {
+    "open_in_new_tab": "Åbn i ny fane",
     "title": "Filer",
     "search_placeholder": "Søg efter filer...",
     "empty_state_title": "Ingen filer endnu",

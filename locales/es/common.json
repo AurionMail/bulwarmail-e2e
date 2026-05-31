@@ -2814,6 +2814,7 @@
     "hint": "Haz clic en un correo a la izquierda para empezar, o inicia el tour."
   },
   "files": {
+    "open_in_new_tab": "Abrir en una pestaña nueva",
     "title": "Archivos",
     "search_placeholder": "Buscar archivos...",
     "empty_state_title": "Aún no hay archivos",

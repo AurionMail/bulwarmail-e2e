@@ -2814,6 +2814,7 @@
     "hint": "왼쪽에서 메일을 클릭해서 시작하거나, 아래의 둘러보기를 클릭해 보세요."
   },
   "files": {
+    "open_in_new_tab": "새 탭에서 열기",
     "title": "파일",
     "search_placeholder": "파일 검색...",
     "empty_state_title": "아직 파일이 없어요",

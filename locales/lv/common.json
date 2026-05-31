@@ -2814,6 +2814,7 @@
     "hint": "Noklikšķiniet uz jebkuru vēstuli kreisajā pusē, lai sāktu."
   },
   "files": {
+    "open_in_new_tab": "Atvērt jaunā cilnē",
     "title": "Faili",
     "search_placeholder": "Meklēt failus...",
     "empty_state_title": "Failu vēl nav",

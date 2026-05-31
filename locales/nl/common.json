@@ -2814,6 +2814,7 @@
     "hint": "Klik links op een e-mail om te beginnen, of start de tour."
   },
   "files": {
+    "open_in_new_tab": "Openen in nieuw tabblad",
     "title": "Bestanden",
     "search_placeholder": "Bestanden zoeken...",
     "empty_state_title": "Nog geen bestanden",

@@ -2837,6 +2837,7 @@
     "hint": "Click any email on the left to get started, or take the tour below."
   },
   "files": {
+    "open_in_new_tab": "Open in new tab",
     "title": "Files",
     "search_placeholder": "Search files...",
     "empty_state_title": "No files yet",

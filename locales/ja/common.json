@@ -2814,6 +2814,7 @@
     "hint": "左のメールをクリックして始めるか、ツアーを開始してください。"
   },
   "files": {
+    "open_in_new_tab": "新しいタブで開く",
     "title": "ファイル",
     "search_placeholder": "ファイルを検索...",
     "empty_state_title": "ファイルがありません",

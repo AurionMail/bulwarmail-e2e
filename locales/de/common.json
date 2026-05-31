@@ -2814,6 +2814,7 @@
     "hint": "Klicken Sie links auf eine E-Mail, um loszulegen, oder starten Sie die Tour."
   },
   "files": {
+    "open_in_new_tab": "In neuem Tab öffnen",
     "title": "Dateien",
     "search_placeholder": "Dateien suchen...",
     "empty_state_title": "Noch keine Dateien",

@@ -2814,6 +2814,7 @@
     "hint": "Kliknij dowolną wiadomość po lewej, aby zacząć, albo skorzystaj z przewodnika poniżej."
   },
   "files": {
+    "open_in_new_tab": "Otwórz w nowej karcie",
     "title": "Pliki",
     "search_placeholder": "Szukaj plików...",
     "empty_state_title": "Brak plików",

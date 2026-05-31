@@ -2837,6 +2837,7 @@
     "hint": "Başlamak için soldaki herhangi bir e-postaya tıklayın veya aşağıdaki turu yapın."
   },
   "files": {
+    "open_in_new_tab": "Yeni sekmede aç",
     "title": "Dosyalar",
     "search_placeholder": "Dosyalarda ara...",
     "empty_state_title": "Henüz dosya yok",
