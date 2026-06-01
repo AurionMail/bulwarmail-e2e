@@ -942,30 +942,34 @@ export function Sidebar({
       {/* Header - hidden in the Pro shell, which owns its own chrome and
           would otherwise render an empty strip (no collapse, no switcher). */}
       {!isEmbedded && (
-        <div className={cn("flex items-center border-b border-border h-14", isCollapsed ? "justify-center px-2" : "gap-1 px-2")}>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onSidebarClose}
-            className="lg:hidden h-9 w-9 flex-shrink-0"
-            aria-label={t("close")}
-          >
-            <X className="w-5 h-5" />
-          </Button>
+        // Border lives on the wrapper (outside the h-14 box) so the bar's total
+        // height matches the search/reply toolbars, which border-b their wrapper too.
+        <div className="border-b border-border">
+          <div className={cn("flex items-center h-14", isCollapsed ? "justify-center px-2" : "gap-1 px-2")}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onSidebarClose}
+              className="lg:hidden h-9 w-9 flex-shrink-0"
+              aria-label={t("close")}
+            >
+              <X className="w-5 h-5" />
+            </Button>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebarCollapsed}
-            className="hidden lg:flex h-8 w-8 flex-shrink-0"
-            title={isCollapsed ? t("expand_tooltip") : t("collapse_tooltip")}
-          >
-            {isCollapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebarCollapsed}
+              className="hidden lg:flex h-8 w-8 flex-shrink-0"
+              title={isCollapsed ? t("expand_tooltip") : t("collapse_tooltip")}
+            >
+              {isCollapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
+            </Button>
 
-          {!isCollapsed && !hideAccountSwitcher && (
-            <AccountSwitcher variant="expanded" className="flex-1" />
-          )}
+            {!isCollapsed && !hideAccountSwitcher && (
+              <AccountSwitcher variant="expanded" className="flex-1" />
+            )}
+          </div>
         </div>
       )}
 
