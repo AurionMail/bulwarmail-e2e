@@ -2899,7 +2899,10 @@ export function EmailViewer({
 <html style="color-scheme: ${colorScheme};"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${iframeCsp}">
 <style>
-  html, body { overflow: hidden; }
+  /* Force content height: some emails set html/body { height: 100% }, which -
+     combined with overflow:hidden and our scrollHeight-based auto-resize -
+     collapses the measured height and clips everything below the fold. */
+  html, body { overflow: hidden; height: auto !important; }
   body { margin: 0; padding: ${bodyPadding}; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a; background: #ffffff; word-wrap: break-word; overflow-wrap: break-word; }
   @media (max-width: 640px) { body { padding-left: ${mobileBodyPaddingX}; padding-right: ${mobileBodyPaddingX}; } }
   img { max-width: 100% !important; height: auto !important; }
