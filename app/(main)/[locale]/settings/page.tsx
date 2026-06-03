@@ -33,6 +33,7 @@ import {
   Languages,
   Info,
   Bug,
+  SwatchBook,
   Download,
   X,
   type LucideIcon,
@@ -145,7 +146,7 @@ const tabIcons: Record<Tab, LucideIcon> = {
   protocol_handlers: LinkIcon,
   sidebar_apps: PanelLeftClose,
   about_data: Info,
-  themes: Palette,
+  themes: SwatchBook,
   plugins: Puzzle,
   debug: Bug,
 };
