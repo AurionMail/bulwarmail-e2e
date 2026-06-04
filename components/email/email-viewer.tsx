@@ -1034,12 +1034,29 @@ export function EmailViewer({
   const [embeddedEmailAttachments, setEmbeddedEmailAttachments] = useState<PostalMimeAttachment[]>([]);
   const [embeddedEmailUnwrapped, setEmbeddedEmailUnwrapped] = useState(false);
 
-  // Plugin detail sidebar state
+  // Plugin detail sidebar state. Collapsed/width persist across opens and
+  // sessions so the panel reopens the way the user last left it.
   const detailSlots = usePluginSlotOffers('email-detail-sidebar');
   const hasDetailSidebar = detailSlots.length > 0;
-  const [detailSidebarCollapsed, setDetailSidebarCollapsed] = useState(false);
-  const [detailSidebarWidth, setDetailSidebarWidth] = useState(280);
-  const detailSidebarWidthRef = useRef(280);
+  const [detailSidebarCollapsed, setDetailSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem('emailDetailSidebarCollapsed') === '1'; } catch { return false; }
+  });
+  const [detailSidebarWidth, setDetailSidebarWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return 280;
+    try {
+      const n = parseInt(localStorage.getItem('emailDetailSidebarWidth') ?? '', 10);
+      return Number.isFinite(n) ? Math.max(200, Math.min(500, n)) : 280;
+    } catch { return 280; }
+  });
+  const detailSidebarWidthRef = useRef(detailSidebarWidth);
+
+  useEffect(() => {
+    try { localStorage.setItem('emailDetailSidebarCollapsed', detailSidebarCollapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [detailSidebarCollapsed]);
+  useEffect(() => {
+    try { localStorage.setItem('emailDetailSidebarWidth', String(detailSidebarWidth)); } catch { /* ignore */ }
+  }, [detailSidebarWidth]);
 
   // Ensure S/MIME key records are loaded from IndexedDB
   useLayoutEffect(() => {
