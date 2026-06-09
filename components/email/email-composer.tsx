@@ -9,6 +9,8 @@ import { X, Paperclip, Send, Save, Check, Loader2, AlertCircle, FileText, Bookma
 import { cn, formatFileSize, formatDateTime, generateUUID } from "@/lib/utils";
 import { debug } from "@/lib/debug";
 import { toast } from "@/stores/toast-store";
+import { useContextMenu } from "@/hooks/use-context-menu";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import { sanitizeSignatureHtml, sanitizeEmailHtml } from "@/lib/email-sanitization";
 import { buildReplySubject, buildForwardSubject } from "@/lib/subject-prefix";
 import { isFilePreviewable } from "@/lib/file-preview";
@@ -246,17 +248,34 @@ export function EmailComposer({
   // `replyTo` from a still-selected email; getInitialBody short-circuits below.
   const shouldEmbedSignatureInNewMail = mode === 'compose' && hasInitialSignature;
 
+  // Format a single EmailAddress for display in the composer input
+  const formatAddr = (r: { name?: string; email?: string }) =>
+    r.email ? (r.name && r.name !== r.email ? `${r.name} <${r.email}>` : r.email) : "";
+
+  // Parse a recipient string that may be "Name <email>" or bare "email"
+  const parseRecipient = (s: string): { name?: string; email: string } => {
+    const trimmed = s.trim();
+    const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+    if (angleMatch) {
+      return { name: angleMatch[1].trim(), email: angleMatch[2].trim() };
+    }
+    return { email: trimmed };
+  };
+
   // Initialize with reply/forward data if provided
   const getInitialTo = () => {
     if (!replyTo) return "";
     // RFC 5322: use Reply-To header if present, otherwise fall back to From
     const replyTarget = replyTo.replyToAddresses?.length
-      ? replyTo.replyToAddresses.filter(r => r.email).map(r => r.email).join(", ")
-      : replyTo.from?.[0]?.email || "";
+      ? replyTo.replyToAddresses.filter(r => r.email).map(formatAddr).join(", ")
+      : (replyTo.from?.[0] ? formatAddr(replyTo.from[0]) : "");
     if (mode === 'reply') {
       return replyTarget ? replyTarget + ', ' : "";
     } else if (mode === 'replyAll') {
-      const originalTo = replyTo.to?.filter(r => r.email).map(r => r.email).join(", ") || "";
+      const ownEmails = new Set(identities.map(i => i.email?.trim().toLowerCase()).filter(Boolean));
+      const originalTo = replyTo.to
+        ?.filter(r => r.email && !ownEmails.has(r.email.trim().toLowerCase()))
+        .map(formatAddr).join(", ") || "";
       const combined = [replyTarget, originalTo].filter(Boolean).join(", ");
       return combined ? combined + ', ' : "";
     }
@@ -265,7 +284,10 @@ export function EmailComposer({
 
   const getInitialCc = () => {
     if (!replyTo || mode !== 'replyAll') return "";
-    const cc = replyTo.cc?.map(r => r.email).join(", ") || "";
+    const ownEmails = new Set(identities.map(i => i.email?.trim().toLowerCase()).filter(Boolean));
+    const cc = replyTo.cc
+      ?.filter(r => r.email && !ownEmails.has(r.email.trim().toLowerCase()))
+      .map(formatAddr).join(", ") || "";
     return cc ? cc + ', ' : "";
   };
 
@@ -867,7 +889,7 @@ export function EmailComposer({
     }, 200);
   }, [getAutocomplete]);
 
-  const insertAutocomplete = (email: string, field: 'to' | 'cc' | 'bcc') => {
+  const insertAutocomplete = (suggestion: { name: string; email: string }, field: 'to' | 'cc' | 'bcc') => {
     const setter = field === 'to' ? setTo : field === 'cc' ? setCc : setBcc;
     const getter = field === 'to' ? to : field === 'cc' ? cc : bcc;
 
@@ -875,7 +897,10 @@ export function EmailComposer({
     if (!getter.trimEnd().endsWith(',') && parts.length > 0) {
       parts.pop();
     }
-    parts.push(email);
+    const formatted = suggestion.name && suggestion.name !== suggestion.email
+      ? `${suggestion.name} <${suggestion.email}>`
+      : suggestion.email;
+    parts.push(formatted);
     setter(parts.join(', ') + ', ');
     setAutocompleteResults([]);
     setActiveAutoField(null);
@@ -908,7 +933,7 @@ export function EmailComposer({
       setAutoSelectedIndex((prev) => Math.max(prev - 1, -1));
     } else if (e.key === 'Enter' && autoSelectedIndex >= 0) {
       e.preventDefault();
-      insertAutocomplete(autocompleteResults[autoSelectedIndex].email, field);
+      insertAutocomplete(autocompleteResults[autoSelectedIndex], field);
     } else if (e.key === 'Escape') {
       setAutocompleteResults([]);
       setActiveAutoField(null);
@@ -1620,9 +1645,9 @@ export function EmailComposer({
           : undefined;
         const mimeBytes = buildMimeMessage({
           from: { name: currentIdentity.name || undefined, email: fromEmail || currentIdentity.email },
-          to: toAddresses.map(e => ({ email: e })),
-          cc: ccAddresses.length > 0 ? ccAddresses.map(e => ({ email: e })) : undefined,
-          bcc: bccAddresses.length > 0 ? bccAddresses.map(e => ({ email: e })) : undefined,
+          to: toAddresses.map(parseRecipient),
+          cc: ccAddresses.length > 0 ? ccAddresses.map(parseRecipient) : undefined,
+          bcc: bccAddresses.length > 0 ? bccAddresses.map(parseRecipient) : undefined,
           subject,
           inReplyTo: mimeInReplyTo,
           references: mimeReferences,
@@ -1635,8 +1660,8 @@ export function EmailComposer({
 
         const smimeHeaders = {
           from: { name: currentIdentity.name || undefined, email: fromEmail || currentIdentity.email },
-          to: toAddresses.map(e => ({ email: e })),
-          cc: ccAddresses.length > 0 ? ccAddresses.map(e => ({ email: e })) : undefined,
+          to: toAddresses.map(parseRecipient),
+          cc: ccAddresses.length > 0 ? ccAddresses.map(parseRecipient) : undefined,
           subject,
           inReplyTo: mimeInReplyTo,
           references: mimeReferences,
@@ -1658,7 +1683,7 @@ export function EmailComposer({
 
         // 6. Encrypt if enabled
         if (smimeEncrypt_ && smimeKeyRecord) {
-          const allRecipients = [...toAddresses, ...ccAddresses, ...bccAddresses];
+          const allRecipients = [...toAddresses, ...ccAddresses, ...bccAddresses].map(s => parseRecipient(s).email);
           const { found, missing } = smimeStore.getRecipientCerts(allRecipients);
           if (missing.length > 0) {
             throw new Error(`Missing certificates for: ${missing.join(', ')}`);
@@ -1675,7 +1700,7 @@ export function EmailComposer({
         }
 
         // 7. Send via raw email path
-        const result = await sendRawEmail(client, payload, currentIdentity.id, effectiveDelayedUntil, [...toAddresses, ...ccAddresses, ...bccAddresses]);
+        const result = await sendRawEmail(client, payload, currentIdentity.id, effectiveDelayedUntil, [...toAddresses, ...ccAddresses, ...bccAddresses].map(s => parseRecipient(s).email));
         if (effectiveDelayedUntil && finalDraftId) {
           client.deleteEmail(finalDraftId).catch(err => {
             debug.warn('email', 'Scheduled S/MIME send created, but plaintext draft cleanup failed:', err);
@@ -2657,7 +2682,7 @@ const AutocompleteDropdown = React.forwardRef<HTMLDivElement, {
   id: string;
   results: Array<{ name: string; email: string }>;
   selectedIndex: number;
-  onSelect: (email: string) => void;
+  onSelect: (suggestion: { name: string; email: string }) => void;
 }>(function AutocompleteDropdown({ id, results, selectedIndex, onSelect }, ref) {
   return (
     <div ref={ref} id={id} role="listbox" className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
@@ -2674,7 +2699,7 @@ const AutocompleteDropdown = React.forwardRef<HTMLDivElement, {
           )}
           onMouseDown={(e) => {
             e.preventDefault();
-            onSelect(r.email);
+            onSelect(r);
           }}
         >
           <span className="font-medium truncate">{r.name || r.email}</span>
@@ -2717,15 +2742,84 @@ function RecipientChipInput({
   autocompleteResults: Array<{ name: string; email: string }>;
   autoSelectedIndex: number;
   dropdownRef: React.RefObject<HTMLDivElement | null>;
-  onInsertAutocomplete: (email: string, field: 'to' | 'cc' | 'bcc') => void;
+  onInsertAutocomplete: (suggestion: { name: string; email: string }, field: 'to' | 'cc' | 'bcc') => void;
   validationError?: boolean;
   validationMessage?: string;
   onTab?: () => void;
 }) {
+  const { contextMenu, openContextMenu, closeContextMenu, menuRef } = useContextMenu<{ index: number; chip: string }>();
+  const [editingChip, setEditingChip] = useState<{ index: number; chip: string; editType: 'email' | 'name' } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const editInputRef = useRef<HTMLInputElement | null>(null);
+
   const allParts = value.split(',').map(s => s.trim()).filter(Boolean);
   const hasTrailingComma = value.trimEnd().endsWith(',');
   const chips = hasTrailingComma ? allParts : allParts.slice(0, -1);
   const inputText = hasTrailingComma ? '' : (allParts[allParts.length - 1] || '');
+
+  // Focus edit input when editing starts
+  useEffect(() => {
+    if (editingChip) {
+      setTimeout(() => {
+        if (editInputRef.current) {
+          editInputRef.current.focus();
+          editInputRef.current.select();
+        }
+      }, 0);
+    }
+  }, [editingChip]);
+
+  // Parse a chip string to extract name and email
+  const parseChip = (chip: string): { name?: string; email: string } => {
+    const angleMatch = chip.match(/^(.+?)\s*<([^>]+)>$/);
+    if (angleMatch) {
+      return { name: angleMatch[1].trim(), email: angleMatch[2].trim() };
+    }
+    return { email: chip };
+  };
+
+  // Format a chip for display
+  const formatChipDisplay = (chip: string): string => {
+    const parsed = parseChip(chip);
+    if (parsed.name && parsed.name !== parsed.email) {
+      return `${parsed.name} (${parsed.email})`;
+    }
+    return parsed.email;
+  };
+
+  // Handle saving an edited chip
+  const handleSaveEdit = (newValue: string) => {
+    if (!editingChip) return;
+    const { index, editType } = editingChip;
+    const chip = chips[index];
+    const parsed = parseChip(chip);
+
+    let newChip: string;
+    if (editType === 'email') {
+      // Update email, keep name
+      const trimmedNew = newValue.trim();
+      if (!trimmedNew) {
+        setEditingChip(null);
+        return;
+      }
+      newChip = parsed.name ? `${parsed.name} <${trimmedNew}>` : trimmedNew;
+    } else {
+      // Update name, keep email
+      const trimmedNew = newValue.trim();
+      if (trimmedNew) {
+        newChip = `${trimmedNew} <${parsed.email}>`;
+      } else {
+        // Name cleared, remove from format
+        newChip = parsed.email;
+      }
+    }
+
+    // Replace the chip in the value
+    const newChips = [...chips];
+    newChips[index] = newChip;
+    onChange(newChips.join(', ') + ', ');
+    setEditingChip(null);
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newInputText = e.target.value;
@@ -2778,14 +2872,6 @@ function RecipientChipInput({
     }
   };
 
-  const handleChipClick = (index: number) => {
-    const chipEmail = chips[index];
-    const remainingChips = chips.filter((_, i) => i !== index);
-    const chipPart = remainingChips.length > 0 ? remainingChips.join(', ') + ', ' : '';
-    onChange(chipPart + chipEmail);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  };
-
   const handleChipRemove = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const remainingChips = chips.filter((_, i) => i !== index);
@@ -2794,6 +2880,28 @@ function RecipientChipInput({
     } else {
       onChange(inputText);
     }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, index: number, chip: string) => {
+    openContextMenu(e, { index, chip });
+  };
+
+  const handleEditEmail = () => {
+    if (!contextMenu.data) return;
+    const { index, chip } = contextMenu.data;
+    const parsed = parseChip(chip);
+    closeContextMenu();
+    setEditValue(parsed.email);
+    setEditingChip({ index, chip, editType: 'email' });
+  };
+
+  const handleEditName = () => {
+    if (!contextMenu.data) return;
+    const { index, chip } = contextMenu.data;
+    const parsed = parseChip(chip);
+    closeContextMenu();
+    setEditValue(parsed.name || '');
+    setEditingChip({ index, chip, editType: 'name' });
   };
 
   const handleBlur = (e: React.FocusEvent) => {
@@ -2817,47 +2925,95 @@ function RecipientChipInput({
         )}
         onClick={() => inputRef.current?.focus()}
       >
-        {chips.map((chip, i) => (
-          <span
-            key={`${chip}-${i}`}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground text-sm border border-border cursor-pointer hover:bg-accent transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleChipClick(i);
-            }}
-          >
-            <span className="truncate max-w-[200px]">{chip}</span>
-            <button
-              type="button"
-              className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-muted-foreground/20 transition-colors"
-              onClick={(e) => handleChipRemove(i, e)}
-              tabIndex={-1}
+        {chips.map((chip, i) => {
+          const isEditing = editingChip?.index === i;
+          const chipDisplay = formatChipDisplay(chip);
+          return (
+            <span
+              key={`${chip}-${i}`}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-sm border border-border transition-colors",
+                isEditing
+                  ? "bg-background ring-1 ring-ring"
+                  : "bg-secondary text-secondary-foreground hover:bg-accent"
+              )}
+              onContextMenu={isEditing ? undefined : (e) => handleContextMenu(e, i, chip)}
             >
-              <X className="w-3 h-3" />
-            </button>
-          </span>
-        ))}
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={chips.length === 0 ? placeholder : ''}
-          value={inputText}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onBlur={handleBlur}
-          className="flex-1 min-w-[120px] border-0 outline-none h-7 text-sm bg-transparent text-foreground placeholder:text-muted-foreground"
-          role="combobox"
-          aria-expanded={activeAutoField === field && autocompleteResults.length > 0}
-          aria-autocomplete="list"
-          aria-controls={activeAutoField === field ? `autocomplete-${field}` : undefined}
-          aria-activedescendant={activeAutoField === field && autoSelectedIndex >= 0 ? `autocomplete-option-${autoSelectedIndex}` : undefined}
-          aria-invalid={validationError || undefined}
-          data-bwignore="true"
-          data-1p-ignore
-          data-op-ignore
-          data-lpignore="true"
-          data-form-type="other"
-        />
+              {isEditing ? (
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveEdit(editValue);
+                    } else if (e.key === 'Escape') {
+                      setEditingChip(null);
+                    } else if (e.key === 'Tab') {
+                      e.preventDefault();
+                      handleSaveEdit(editValue);
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const relatedTarget = e.relatedTarget as Node | null;
+                    if (relatedTarget && dropdownRef.current?.contains(relatedTarget)) {
+                      return;
+                    }
+                    handleSaveEdit(editValue);
+                  }}
+                  className="flex-1 min-w-[80px] border-0 outline-none h-5 text-sm bg-transparent text-foreground placeholder:text-muted-foreground"
+                  placeholder={editingChip?.editType === 'email' ? 'Email address' : 'Display name'}
+                  data-bwignore="true"
+                />
+              ) : (
+                <span className="truncate max-w-[200px]">{chipDisplay}</span>
+              )}
+              <button
+                type="button"
+                className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-muted-foreground/20 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isEditing) {
+                    handleSaveEdit(editValue);
+                  } else {
+                    handleChipRemove(i, e);
+                  }
+                }}
+                tabIndex={-1}
+              >
+                {isEditing ? (
+                  <Check className="w-3 h-3" />
+                ) : (
+                  <X className="w-3 h-3" />
+                )}
+              </button>
+            </span>
+          );
+        })}
+        {!editingChip && (
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={chips.length === 0 ? placeholder : ''}
+            value={inputText}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            className="flex-1 min-w-[120px] border-0 outline-none h-7 text-sm bg-transparent text-foreground placeholder:text-muted-foreground"
+            role="combobox"
+            aria-expanded={activeAutoField === field && autocompleteResults.length > 0}
+            aria-autocomplete="list"
+            aria-controls={activeAutoField === field ? `autocomplete-${field}` : undefined}
+            aria-activedescendant={activeAutoField === field && autoSelectedIndex >= 0 ? `autocomplete-option-${autoSelectedIndex}` : undefined}
+            aria-invalid={validationError || undefined}
+            data-bwignore="true"
+            data-1p-ignore
+            data-op-ignore
+            data-lpignore="true"
+            data-form-type="other"
+          />
+        )}
       </div>
       {validationError && validationMessage && (
         <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{validationMessage}</p>
@@ -2868,9 +3024,33 @@ function RecipientChipInput({
           id={`autocomplete-${field}`}
           results={autocompleteResults}
           selectedIndex={autoSelectedIndex}
-          onSelect={(email) => onInsertAutocomplete(email, field)}
+          onSelect={(suggestion) => onInsertAutocomplete(suggestion, field)}
         />
       )}
+      <ContextMenu
+        isOpen={contextMenu.isOpen}
+        position={contextMenu.position}
+        onClose={closeContextMenu}
+        ref={menuRef}
+      >
+        {contextMenu.data && (
+          <>
+            <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground truncate max-w-[200px]">
+              {formatChipDisplay(contextMenu.data.chip)}
+            </div>
+            <ContextMenuSeparator />
+            <ContextMenuItem label="Edit email address" onClick={handleEditEmail} />
+            <ContextMenuItem label="Edit display name" onClick={handleEditName} />
+            <ContextMenuSeparator />
+            <ContextMenuItem label="Remove" onClick={() => {
+              if (contextMenu.data) {
+                handleChipRemove(contextMenu.data.index, { stopPropagation: () => {} } as React.MouseEvent);
+              }
+              closeContextMenu();
+            }} destructive />
+          </>
+        )}
+      </ContextMenu>
     </div>
   );
 }

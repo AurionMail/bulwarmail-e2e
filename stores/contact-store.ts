@@ -909,9 +909,13 @@ export const useContactStore = create<ContactStore>()(
       },
 
       addToTrustedSendersBook: async (client, email) => {
-        const normalizedEmail = email.toLowerCase().trim();
+        // Parse "Name <email>" format to extract display name and email
+        const trimmed = email.trim();
+        const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+        const displayName = angleMatch ? angleMatch[1].trim() : undefined;
+        const emailAddress = (angleMatch ? angleMatch[2] : trimmed).toLowerCase().trim();
         const { trustedSenderEmails } = get();
-        if (trustedSenderEmails.includes(normalizedEmail)) return;
+        if (trustedSenderEmails.includes(emailAddress)) return;
 
         let bookId = get().trustedSendersBookId;
         if (!bookId) {
@@ -920,17 +924,21 @@ export const useContactStore = create<ContactStore>()(
         }
         if (!bookId) throw new Error('Could not find or create trusted senders address book');
 
-        debug.log('contacts', 'Adding trusted sender:', normalizedEmail, 'to book:', bookId);
+        debug.log('contacts', 'Adding trusted sender:', emailAddress, 'to book:', bookId);
         await client.createContact({
           addressBookIds: { [bookId]: true },
-          emails: { email: { address: normalizedEmail } },
+          ...(displayName ? { name: { full: displayName } } : {}),
+          emails: { email: { address: emailAddress } },
         });
-        set((state) => ({ trustedSenderEmails: [...state.trustedSenderEmails, normalizedEmail] }));
+        set((state) => ({ trustedSenderEmails: [...state.trustedSenderEmails, emailAddress] }));
         debug.log('contacts', 'Trusted sender added successfully');
       },
 
       removeFromTrustedSendersBook: async (client, email) => {
-        const normalizedEmail = email.toLowerCase().trim();
+        // Parse "Name <email>" format to extract just the email address
+        const trimmed = email.trim();
+        const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+        const normalizedEmail = (angleMatch ? angleMatch[2] : trimmed).toLowerCase().trim();
         const { trustedSendersBookId } = get();
         if (!trustedSendersBookId) return;
 
@@ -947,7 +955,10 @@ export const useContactStore = create<ContactStore>()(
       },
 
       isTrustedAddressBookSender: (email) => {
-        const normalizedEmail = email.toLowerCase().trim();
+        // Parse "Name <email>" format to extract just the email address
+        const trimmed = email.trim();
+        const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+        const normalizedEmail = (angleMatch ? angleMatch[2] : trimmed).toLowerCase().trim();
         return get().trustedSenderEmails.includes(normalizedEmail);
       },
 

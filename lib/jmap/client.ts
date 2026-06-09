@@ -5,6 +5,16 @@ import { toWildcardQuery } from "./search-utils";
 import { debug } from "@/lib/debug";
 import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
 
+/** Parse a recipient string that may be "Name <email>" or bare "email" into { name?, email }. */
+function parseRecipientString(s: string): { name?: string; email: string } {
+  const trimmed = s.trim();
+  const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+  if (angleMatch) {
+    return { name: angleMatch[1].trim(), email: angleMatch[2].trim() };
+  }
+  return { email: trimmed };
+}
+
 export class RateLimitError extends Error {
   retryAfterMs: number;
   constructor(retryAfterMs: number) {
@@ -2210,12 +2220,12 @@ export class JMAPClient implements IJMAPClient {
     const emailCreate: Record<string, unknown> = {
       from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: fromEmail || this.username }],
       replyTo: identityReplyTo?.length ? identityReplyTo : undefined,
-      to: to.map(email => ({ email })),
+      to: to.map(parseRecipientString),
       // RFC 5322 §3.6.3: To/Cc carry an address-list (non-empty). Sending
       // cc:[] makes the server emit a literal `Cc:` header with no addresses,
       // which is malformed and a spam signal. Omit the field when empty.
-      cc: cc?.length ? cc.map(email => ({ email })) : undefined,
-      bcc: bcc?.length ? bcc.map(email => ({ email })) : undefined,
+      cc: cc?.length ? cc.map(parseRecipientString) : undefined,
+      bcc: bcc?.length ? bcc.map(parseRecipientString) : undefined,
       subject,
       inReplyTo: normalizedInReplyTo?.length ? normalizedInReplyTo : undefined,
       references: normalizedReferences?.length ? normalizedReferences : undefined,
