@@ -666,23 +666,32 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Trusted senders methods
       addTrustedSender: (email: string) => {
-        const normalizedEmail = email.toLowerCase().trim();
+        // Parse "Name <email>" format to extract just the email address
+        const trimmed = email.trim();
+        const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+        const emailAddress = (angleMatch ? angleMatch[2] : trimmed).toLowerCase().trim();
         const current = get().trustedSenders;
-        if (!current.includes(normalizedEmail)) {
-          set({ trustedSenders: [...current, normalizedEmail] });
+        if (!current.includes(emailAddress)) {
+          set({ trustedSenders: [...current, emailAddress] });
         }
       },
 
       removeTrustedSender: (email: string) => {
-        const normalizedEmail = email.toLowerCase().trim();
+        // Parse "Name <email>" format to extract just the email address
+        const trimmed = email.trim();
+        const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+        const emailAddress = (angleMatch ? angleMatch[2] : trimmed).toLowerCase().trim();
         set({
-          trustedSenders: get().trustedSenders.filter(e => e !== normalizedEmail)
+          trustedSenders: get().trustedSenders.filter(e => e !== emailAddress)
         });
       },
 
       isSenderTrusted: (email: string) => {
-        const normalizedEmail = email.toLowerCase().trim();
-        return get().trustedSenders.includes(normalizedEmail);
+        // Parse "Name <email>" format to extract just the email address
+        const trimmed = email.trim();
+        const angleMatch = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
+        const emailAddress = (angleMatch ? angleMatch[2] : trimmed).toLowerCase().trim();
+        return get().trustedSenders.includes(emailAddress);
       },
 
       // Keyword methods
