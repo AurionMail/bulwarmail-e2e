@@ -2366,7 +2366,9 @@ export class JMAPClient implements IJMAPClient {
           if (!activePublicKeys.some(k => k.getFingerprint() === myPublicKey.getFingerprint())) {
             activePublicKeys.push(myPublicKey);
           }
-        } catch(e) {}
+        } catch (err) {
+          console.warn(`[Crypto] Impossible d'ajouter la clé publique de l'expéditeur pour ${senderEmail}:`, err);
+        }
 
         networkBody = await aurionSession.encryptForRecipients(activePublicKeys, clearPayload);
         networkHtmlBody = undefined; // Un seul conteneur chiffré OpenPGP
