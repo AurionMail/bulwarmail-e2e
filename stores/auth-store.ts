@@ -41,7 +41,7 @@ interface AuthState {
   isDemoMode: boolean;
   securityMode: SecurityMode;// AURION
 
-  login: (serverUrl: string, username: string, password: string, totp?: string, rememberMe?: boolean) => Promise<boolean>;
+  login: (serverUrl: string, username: string, password: string, totp?: string, rememberMe?: boolean, securityMode?: SecurityMode, mailPassword?: string) => Promise<boolean>;
   loginWithOAuth: (serverUrl: string, code: string, codeVerifier: string, redirectUri: string, serverId?: string) => Promise<boolean>;
   loginWithServerSso: (code: string, state: string) => Promise<boolean>;
   loginDemo: () => Promise<boolean>;
