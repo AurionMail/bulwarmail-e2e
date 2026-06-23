@@ -5,6 +5,8 @@ import { toWildcardQuery } from "./search-utils";
 import { debug } from "@/lib/debug";
 import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
 import { cryptoWorkerBridge } from "@/lib/aurion/worker-bridge";// AURION
+import { aurionSession } from "@/lib/aurion";// AURION
+import { PublicKey } from 'openpgp';//AURION 
 
 /** Parse a recipient string that may be "Name <email>" or bare "email" into { name?, email }. */
 function parseRecipientString(s: string): { name?: string; email: string } {
@@ -2278,25 +2280,23 @@ export class JMAPClient implements IJMAPClient {
     references?: string[],
     delayedUntil?: string,
     envelopeMailFrom?: string,
-    options?: { requestReadReceipt?: boolean }
+    options?: { requestReadReceipt?: boolean },
+    resolvedPublicKeys?: Record<string, string>
   ): Promise<SendEmailResult> {
     const holdForSeconds = delayedUntil ? this.validateDelayedUntil(delayedUntil) : undefined;
     const emailId = `send-${Date.now()}`;
     const targetAccountId = (fromEmail && Object.keys(this.accounts).find(id =>
       this.accounts[id]?.name?.toLowerCase() === fromEmail.toLowerCase()
     )) || this.accountId;
+    
     const mboxResp = await this.request([
       ["Mailbox/get", { accountId: targetAccountId }, "0"]
     ]);
     const mailboxes = (mboxResp.methodResponses?.[0]?.[1]?.list || []) as Mailbox[];
     const sentMailbox = mailboxes.find(mb => mb.role === 'sent');
-    if (!sentMailbox) {
-      throw new Error('No sent mailbox found');
-    }
+    if (!sentMailbox) throw new Error('No sent mailbox found');
     const draftsMailbox = mailboxes.find(mb => mb.role === 'drafts');
-    if (!draftsMailbox) {
-      throw new Error('No drafts mailbox found');
-    }
+    if (!draftsMailbox) throw new Error('No drafts mailbox found');
 
     let finalIdentityId = identityId;
     let identityReplyTo: EmailAddress[] | undefined;
@@ -2304,16 +2304,11 @@ export class JMAPClient implements IJMAPClient {
       const identityResponse = await this.request([
         ["Identity/get", { accountId: targetAccountId }, "0"]
       ]);
-
-      if (!finalIdentityId) {
-        finalIdentityId = targetAccountId;
-      }
+      if (!finalIdentityId) finalIdentityId = targetAccountId;
       if (identityResponse.methodResponses?.[0]?.[0] === "Identity/get") {
         const identities = (identityResponse.methodResponses[0][1].list || []) as Identity[];
         if (identities.length > 0) {
-          let matchingIdentity = identityId
-            ? identities.find((id) => id.id === identityId)
-            : undefined;
+          let matchingIdentity = identityId ? identities.find((id) => id.id === identityId) : undefined;
           if (!matchingIdentity) {
             const target = fromEmail || this.username;
             matchingIdentity = identities.find((id) => id.email === target)
@@ -2329,11 +2324,67 @@ export class JMAPClient implements IJMAPClient {
     // (no angle brackets). Stalwart may return them either way, so normalize.
     const normalizedInReplyTo = inReplyTo?.map(stripMessageIdBrackets).filter(Boolean);
     const normalizedReferences = references?.map(stripMessageIdBrackets).filter(Boolean);
-
     const sanitizedFromName = sanitizeIdentityDisplayName(fromName);
     // Always create a new email with the final body content
+    const senderEmail = fromEmail || this.username;
+
+    // =========================================================================
+    // BEGIN AURION : Chiffrement (Multi-destinataire ou Hybride ZK)
+    // =========================================================================
+    let networkBody = body;
+    let networkHtmlBody = htmlBody;
+    let localSentBody: string | undefined = undefined;
+
+    if (aurionSession && aurionSession.isUnlocked()) {
+      const activePublicKeys: PublicKey[] = [];
+      const allRecipients = [...to, ...(cc || [])].map(email => email.toLowerCase().trim());
+
+      if (resolvedPublicKeys) {
+        for (const email of allRecipients) {
+          const armoredKey = resolvedPublicKeys[email];
+          if (armoredKey) {
+            try {
+              const parsedKey = await aurionSession.importPublicKey(armoredKey);
+              activePublicKeys.push(parsedKey);
+            } catch (err) {
+              console.warn(`[Crypto] Échec du parsing de la clé publique pour ${email}:`, err);
+            }
+          }
+        }
+      }
+
+      const clearPayload = htmlBody 
+        ? `Content-Type: text/html; charset=utf-8\r\n\r\n${htmlBody}`
+        : body;
+      const totalTargetRecipients = to.length + (cc?.length || 0);
+
+      // CAS 1 : Chiffrement de bout en bout (Au moins un destinataire possède une clé)
+      if (activePublicKeys.length === totalTargetRecipients && totalTargetRecipients > 0) {
+        try {
+          // On s'ajoute soi-même à la liste pour le dossier Sent
+          const myPublicKey = aurionSession.getPrivateKeyForIdentity(senderEmail).toPublic();
+          if (!activePublicKeys.some(k => k.getFingerprint() === myPublicKey.getFingerprint())) {
+            activePublicKeys.push(myPublicKey);
+          }
+        } catch(e) {}
+
+        networkBody = await aurionSession.encryptForRecipients(activePublicKeys, clearPayload);
+        networkHtmlBody = undefined; // Un seul conteneur chiffré OpenPGP
+      } 
+      // CAS 2 : FLUX HYBRIDE (Personne n'a de clé publique)
+      else {
+        // Le destinataire recevra le contenu original en clair (networkBody & networkHtmlBody restent inchangés)
+        // Mais on prépare une version chiffrée ZK spécifiquement pour notre dossier Sent local !
+        localSentBody = await aurionSession.encryptForSelf(clearPayload, senderEmail);
+      }
+    }
+
+    // =========================================================================
+    // CONSTRUCTION DE L'OBJET JMAP POUR L'ENVOI RÉSEAU
+    // =========================================================================
     const emailCreate: Record<string, unknown> = {
-      from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: fromEmail || this.username }],
+      // Per RFC 8621 §4.1.2.3 inReplyTo/references are arrays of bare msg-ids
+      // (no angle brackets). Stalwart may return them either way, so normalize.      from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: senderEmail }],
       replyTo: identityReplyTo?.length ? identityReplyTo : undefined,
       to: to.map(parseRecipientString),
       // RFC 5322 §3.6.3: To/Cc carry an address-list (non-empty). Sending
@@ -2352,19 +2403,15 @@ export class JMAPClient implements IJMAPClient {
       // RFC 8098: ask the recipient's client to return a Message Disposition
       // Notification to our address. JMAP lets us set the raw header on create
       // via the "header:<Name>:asText" property form.
-      emailCreate["header:Disposition-Notification-To:asText"] = fromEmail || this.username;
+      emailCreate["header:Disposition-Notification-To:asText"] = fromEmail;
     }
 
-    if (htmlBody) {
-      // Send as multipart/alternative with both text and HTML
-      emailCreate.bodyValues = {
-        "text": { value: body },
-        "html": { value: htmlBody },
-      };
+    if (networkHtmlBody) {
+      emailCreate.bodyValues = { "text": { value: networkBody }, "html": { value: networkHtmlBody } };
       emailCreate.textBody = [{ partId: "text", type: "text/plain" }];
       emailCreate.htmlBody = [{ partId: "html", type: "text/html" }];
     } else {
-      emailCreate.bodyValues = { "1": { value: body } };
+      emailCreate.bodyValues = { "1": { value: networkBody } };
       emailCreate.textBody = [{ partId: "1", type: "text/plain" }];
     }
 
@@ -2380,21 +2427,26 @@ export class JMAPClient implements IJMAPClient {
 
     const methodCalls: JMAPMethodCall[] = [];
 
-    // Use onSuccessUpdateEmail to move from Drafts to Sent after submission.
-    // This ensures SMTP send happens before the email lands in Sent, avoiding
-    // issues with servers that encrypt on append (e.g. Stalwart). See #188.
-    const onSuccessUpdateEmail = {
-      "#1": {
-        [`mailboxIds/${draftsMailbox.id}`]: null,
-        [`mailboxIds/${sentMailbox.id}`]: true,
-        "keywords/$draft": null,
+    // Macro de succès standard : déplace le message de Brouillons à Sent
+    // Typage explicite de la structure imbriquée JMAP pour éviter l'erreur "unknown"
+const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
+  "#1": {
+    [`mailboxIds/${draftsMailbox.id}`]: null,
+    [`mailboxIds/${sentMailbox.id}`]: true,
+    "keywords/$draft": null,
       },
     };
 
-    // When an explicit envelope MAIL FROM is provided (header From ≠ envelope,
-    // e.g. sending from a domain-catch-all alias without a dedicated Identity),
-    // set the EmailSubmission envelope explicitly. JMAP §7.3: when `envelope`
-    // is omitted the server derives mailFrom from the Identity.
+    //  FLUX HYBRIDE :
+    // Si une version cryptée locale a été générée pour nous-mêmes, on demande au serveur 
+    // d'écraser le texte clair du dossier "Sent" par le bloc OpenPGP ZK dès la réussite de l'envoi.
+    if (localSentBody) {
+      // On écrase complètement l'arborescence des corps de message
+      onSuccessUpdateEmail["#1"]["bodyValues"] = { "1": { value: localSentBody } };
+      onSuccessUpdateEmail["#1"]["textBody"] = [{ partId: "1", type: "text/plain" }];
+      onSuccessUpdateEmail["#1"]["htmlBody"] = null; 
+    }
+    // END AURION
     const buildSubmissionCreate = (submissionId: string): Record<string, unknown> => {
       const create: Record<string, unknown> = { emailId: `#${emailId}`, identityId: finalIdentityId };
       if (holdForSeconds || envelopeMailFrom) {
@@ -2404,7 +2456,7 @@ export class JMAPClient implements IJMAPClient {
           .map((email) => ({ email }));
         create.envelope = {
           mailFrom: {
-            email: envelopeMailFrom || fromEmail || this.username,
+            email: envelopeMailFrom || senderEmail,
             ...(holdForSeconds ? { parameters: { HOLDFOR: String(holdForSeconds) } } : {}),
           },
           rcptTo: envelopeRecipients,
@@ -2412,27 +2464,18 @@ export class JMAPClient implements IJMAPClient {
       }
       return { [submissionId]: create };
     };
+    // END AURION
 
     if (draftId) {
-      // Destroy the old draft and create a new email with the final body
-      methodCalls.push(["Email/set", {
-        accountId: this.accountId,
-        destroy: [draftId],
-      }, "0"]);
-      methodCalls.push(["Email/set", {
-        accountId: targetAccountId,
-        create: { [emailId]: emailCreate },
-      }, "1"]);
+      methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
+      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
       methodCalls.push(["EmailSubmission/set", {
         accountId: this.getSubmissionAccountId(targetAccountId),
         create: buildSubmissionCreate("1"),
         onSuccessUpdateEmail,
       }, "2"]);
     } else {
-      methodCalls.push(["Email/set", {
-        accountId: targetAccountId,
-        create: { [emailId]: emailCreate },
-      }, "0"]);
+      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
       methodCalls.push(["EmailSubmission/set", {
         accountId: this.getSubmissionAccountId(targetAccountId),
         create: buildSubmissionCreate("1"),
@@ -2454,28 +2497,12 @@ export class JMAPClient implements IJMAPClient {
         }
 
         if (result.notCreated) {
-          // Include method name + full error object so it's clear whether the
-          // failure came from Email/set (draft create) or EmailSubmission/set
-          // (actual send) and which JMAP error type/properties were returned.
-          // Without this the user sees a generic "Failed to send" toast and
-          // the draft sits in Drafts with no indication of why (#303).
-          const errors = result.notCreated as Record<string, {
-            type?: string;
-            description?: string;
-            properties?: string[];
-          }>;
+          const errors = result.notCreated as Record<string, { type?: string; description?: string; properties?: string[] }>;
           const firstError = Object.values(errors)[0];
-          console.error(
-            `[sendEmail] ${methodName} notCreated:`,
-            JSON.stringify(errors, null, 2),
-          );
-          const propsHint = firstError?.properties?.length
-            ? ` (properties: ${firstError.properties.join(', ')})`
-            : '';
+          console.error(`[sendEmail] ${methodName} notCreated:`, JSON.stringify(errors, null, 2));
+          const propsHint = firstError?.properties?.length ? ` (properties: ${firstError.properties.join(', ')})` : '';
           const typeHint = firstError?.type ? ` [${firstError.type}]` : '';
-          throw new Error(
-            `${firstError?.description || firstError?.type || 'Failed to send email'}${typeHint}${propsHint}`,
-          );
+          throw new Error(`${firstError?.description || firstError?.type || 'Failed to send email'}${typeHint}${propsHint}`);
         }
 
         if (methodName === 'Email/set' && result.created?.[emailId]?.id) {

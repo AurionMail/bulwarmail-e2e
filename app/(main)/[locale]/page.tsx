@@ -76,6 +76,7 @@ import { buildQuoteHeader } from "@/lib/quote-header";
 import { buildReplySubject, buildForwardSubject } from "@/lib/subject-prefix";
 import { useLocaleStore } from "@/stores/locale-store";
 import type { QuoteHeader } from "@/lib/plugin-types";
+import { aurionApi } from "@/lib/aurion";
 
 const SCHEDULED_MAILBOX_ID = '__scheduled__';
 
@@ -1138,6 +1139,7 @@ export default function Home() {
     references?: string[];
     delayedUntil?: string;
     requestReadReceipt?: boolean;
+    resolvedPublicKeys?: Record<string, string | null>;// AURION
   }) => {
     if (!client) return;
 
@@ -1145,7 +1147,7 @@ export default function Home() {
       const effectiveMode = pendingDraft?.mode ?? composerMode;
       const originalEmailId = selectedEmail?.id;
 
-      const result = await sendEmail(client, data.to, data.subject, data.body, data.cc, data.bcc, data.identityId, data.fromEmail, data.draftId, data.fromName, data.htmlBody, data.attachments, data.inReplyTo, data.references, data.delayedUntil, data.envelopeMailFrom, { requestReadReceipt: data.requestReadReceipt });
+      const result = await sendEmail(client, data.to, data.subject, data.body, data.cc, data.bcc, data.identityId, data.fromEmail, data.draftId, data.fromName, data.htmlBody, data.attachments, data.inReplyTo, data.references, data.delayedUntil, data.envelopeMailFrom, { requestReadReceipt: data.requestReadReceipt }, data.resolvedPublicKeys/*AURION*/);
       setShowComposer(false);
       if (result.scheduled) {
         await refreshScheduledMetadata(client);
@@ -2188,6 +2190,13 @@ export default function Home() {
       references: selectedEmail.references,
     });
 
+    // BEGIN AURION
+     const response = await aurionApi.getPublicKey(sender.email);
+          // On suppose que response contient le bloc textuel de la clé (ex: response.publicKey ou response.armored)
+          // Ajuste 'response.publicKey' selon la structure réelle de ton Promise<PublicKeyResponse>
+    const armoredKey: string | null = response.armored_key || null;
+    const resolvedPublicKeys: Record<string, string | null> = { [sender.email]: armoredKey };
+    // END AURION
     // Send reply with just the body text
     const result = await sendEmail(
       client,
@@ -2206,6 +2215,7 @@ export default function Home() {
       threading?.references,
       delayedUntil,
       envelopeMailFrom,
+      resolvedPublicKeys// AURION 
     );
 
     if (result.scheduled) {
