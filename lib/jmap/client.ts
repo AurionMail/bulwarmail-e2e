@@ -4,6 +4,7 @@ import type { IJMAPClient } from "./client-interface";
 import { toWildcardQuery } from "./search-utils";
 import { debug } from "@/lib/debug";
 import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
+import { cryptoWorkerBridge } from "@/lib/aurion/worker-bridge";// AURION
 
 /** Parse a recipient string that may be "Name <email>" or bare "email" into { name?, email }. */
 function parseRecipientString(s: string): { name?: string; email: string } {
@@ -1091,7 +1092,11 @@ export class JMAPClient implements IJMAPClient {
           namespaceMailboxIds(emails, accountId);
         }
 
-        return { emails, hasMore, total };
+        // AURION : Déchiffrement transparent du lot (Previews/Sujets)
+        const decryptedEmails = await cryptoWorkerBridge.processMailBatchAsync(emails);
+
+        return { emails: decryptedEmails, hasMore, total };
+        // END AURION
       }
 
       return { emails: [], hasMore: false, total: 0 };
@@ -1196,11 +1201,16 @@ export class JMAPClient implements IJMAPClient {
         namespaceMailboxIds([email], accountId);
       }
 
-      if (email.headers) {
-        await this.parseEmailHeaders(email);
+      // INTERCEPTION AURION : Déchiffrement lourd du corps du message via le Web Worker
+      const [decryptedEmail] = await cryptoWorkerBridge.processMailBatchAsync([email]);
+      if (!decryptedEmail) return null;
+
+      if (decryptedEmail.headers) {
+        await this.parseEmailHeaders(decryptedEmail);
       }
 
-      return email;
+      return decryptedEmail;
+      // END AURION
     } catch (error) {
       console.error('Failed to get email:', error);
       return null;

@@ -20,6 +20,7 @@ import type { Identity } from '@/lib/jmap/types';
 
 import { aurionApi, aurionSession, aurionStorage } from '@/lib/aurion';//AURION
 import type { SecurityMode } from 'aurion-crypto-sdk';// AURION
+import { cryptoWorkerBridge } from '@/lib/aurion/worker-bridge';//AURION
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -467,9 +468,14 @@ export const useAuthStore = create<AuthState>()(
           const client = new JMAPClient(serverUrl, username, effectiveJmapPassword);
           await client.connect();
 
-          // 4. Déchiffrement et montage du Keyring OpenPGP en RAM volatile // ATTENTION À modifier quand base api ok
+          // 4. Déchiffrement et montage du Keyring OpenPGP en RAM volatile
           const keyContainer = await aurionApi.getEncryptedPrivateKey();
           await aurionSession.decryptAndLoadPrivateKeys(keyContainer.keys, salts.salt_client);
+          await cryptoWorkerBridge.initWorkerSession(
+                  keyContainer.keys, 
+                  salts.salt_client, 
+                  aurionSession.h0
+                );
           //
           //
           //-----------------------END AURION--------------
@@ -1502,6 +1508,12 @@ export const useAuthStore = create<AuthState>()(
                 const keyContainer = await aurionApi.getEncryptedPrivateKey();
                 await aurionSession.decryptAndLoadPrivateKeys(keyContainer.keys, salts.salt_client);
                 debug.log('auth', `Aurion OpenPGP Keyring loaded successfully for ${targetAccount.username}`);
+                // avec le h0 pour qu'il fasse son propre déchiffrement isolé
+                await cryptoWorkerBridge.initWorkerSession(
+                  keyContainer.keys, 
+                  salts.salt_client, 
+                  aurionSession.h0
+                );
               } catch (cryptoErr) {
                 debug.error('Failed to load Aurion PGP Keys during session restoration:', cryptoErr);
               }
