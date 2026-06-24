@@ -1803,41 +1803,89 @@ export class JMAPClient implements IJMAPClient {
     try {
       const targetAccountId = accountId || this.accountId;
 
-      // Use the JMAP "text" filter which searches across from, to, cc, bcc,
-      // subject, and body. Stalwart's FTS engine supports wildcard prefix
-      // matching (e.g. "pri*" matches "prime", "primary", "private", etc.)
-      const wildcardQuery = toWildcardQuery(query);
-      const textFilter: Record<string, unknown> = { text: wildcardQuery };
+      // =========================================================================
+      //  AURION : RECHERCHE TEXTUELLE HYBRIDE (UNION + INTERSECTION)
+      // =========================================================================
+      if (aurionSession && aurionSession.isUnlocked() && query && query.trim() !== "") {
+        
+        // 1. Appel local MiniSearch (recherche dans le corps déchiffré)
+        const localMatchedIds = await aurionSession.search(query);
 
-      let filter: Record<string, unknown>;
-      if (mailboxId) {
-        filter = {
-          operator: "AND",
-          conditions: [
-            { inMailbox: mailboxId },
-            textFilter,
-          ],
-        };
-      } else {
-        filter = textFilter;
+        // 2. Appel serveur textuel uniquement (recherche dans From/To/Subject en clair)
+        const wildcardQuery = toWildcardQuery(query);
+        const textQueryResponse = await this.request([
+          ["Email/query", {
+            accountId: targetAccountId,
+            filter: { text: wildcardQuery },
+            limit: 5000, // Buffer suffisant pour attraper les occurrences d'en-tête
+          }, "0"]
+        ]);
+        const serverTextMatchedIds = (textQueryResponse.methodResponses?.[0]?.[1]?.ids || []) as string[];
+
+        // FUSION (UNION) DES DEUX RÉSULTATS TEXTUELS
+        const combinedTextIds = new Set([...localMatchedIds, ...serverTextMatchedIds]);
+
+        // Coupe-circuit : si le texte n'est trouvé ni dans la RAM ni sur le serveur en clair
+        if (combinedTextIds.size === 0) {
+          return { emails: [], hasMore: false, total: 0 };
+        }
+
+        // 3. Récupération du scope structurel lié au dossier courant (si applicable)
+        const serverFilter = mailboxId ? { inMailbox: mailboxId } : undefined;
+        
+        const structuralQueryResponse = await this.request([
+          ["Email/query", {
+            accountId: targetAccountId,
+            ...(serverFilter ? { filter: serverFilter } : {}),
+            sort: [{ property: "receivedAt", isAscending: false }],
+            limit: 10000, // Large scope pour l'intersection
+          }, "0"]
+        ]);
+        const serverStructuralIds = (structuralQueryResponse.methodResponses?.[0]?.[1]?.ids || []) as string[];
+
+        // INTERSECTION FINALE
+        // On ne garde que les messages qui valident la structure du dossier ET qui matchent l'Union textuelle
+        const mergedIds = serverStructuralIds.filter(id => combinedTextIds.has(id));
+        const total = mergedIds.length;
+
+        if (total === 0) return { emails: [], hasMore: false, total: 0 };
+
+        // 4. Pagination locale
+        const paginatedIds = mergedIds.slice(position, position + limit);
+        
+        // Récupération des objets Email complets
+        const getResponse = await this.request([
+          ["Email/get", {
+            accountId: targetAccountId,
+            ids: paginatedIds,
+            properties: [...EMAIL_LIST_PROPERTIES],
+          }, "0"]
+        ]);
+
+        const emailsUnsorted = (getResponse.methodResponses?.[0]?.[1]?.list || []) as Email[];
+        
+        // Restauration de l'ordre décroissant chronologique dicté par serverStructuralIds
+        const emailMap = new Map(emailsUnsorted.map(e => [e.id, e]));
+        const emails = paginatedIds.map(id => emailMap.get(id)).filter(Boolean) as Email[];
+
+        const hasMore = position + emails.length < total;
+        return { emails, hasMore, total };
       }
 
-      const response = await this.request([
-        ["Email/query", {
-          accountId: targetAccountId,
-          filter,
-          sort: [{ property: "receivedAt", isAscending: false }],
-          limit,
-          position,
-          calculateTotal: true,
-        }, "0"],
-        ["Email/get", {
-          accountId: targetAccountId,
-          "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-          properties: [...EMAIL_LIST_PROPERTIES],
-        }, "1"],
-      ]);
+      // =========================================================================
+      // FALLBACK STANDARD (Si Aurion verrouillé ou requête vide)
+      // =========================================================================
+      const wildcardQuery = toWildcardQuery(query);
+      const textFilter: Record<string, unknown> = { text: wildcardQuery };
+      let filter: Record<string, unknown> = mailboxId 
+        ? { operator: "AND", conditions: [{ inMailbox: mailboxId }, textFilter] } 
+        : textFilter;
 
+      const response = await this.request([
+        ["Email/query", { accountId: targetAccountId, filter, sort: [{ property: "receivedAt", isAscending: false }], limit, position, calculateTotal: true }, "0"],
+        ["Email/get", { accountId: targetAccountId, "#ids": { resultOf: "0", name: "Email/query", path: "/ids" }, properties: [...EMAIL_LIST_PROPERTIES] }, "1"],
+      ]);
+      // END AURION
       const queryResponse = response.methodResponses?.[0]?.[1];
       const emails = (response.methodResponses?.[1]?.[1]?.list || []) as Email[];
       emails.sort((a: Email, b: Email) =>
@@ -1862,22 +1910,97 @@ export class JMAPClient implements IJMAPClient {
     try {
       const targetAccountId = accountId || this.accountId;
 
-      const response = await this.request([
-        ["Email/query", {
-          accountId: targetAccountId,
-          filter,
-          sort: [{ property: "receivedAt", isAscending: false }],
-          limit,
-          position,
-          calculateTotal: true,
-        }, "0"],
-        ["Email/get", {
-          accountId: targetAccountId,
-          "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-          properties: [...EMAIL_LIST_PROPERTIES],
-        }, "1"],
-      ]);
+      // =========================================================================
+      //  AURION : RECHERCHE TEXTUELLE HYBRIDE (UNION + INTERSECTION)
+      // =========================================================================
+      if (aurionSession && aurionSession.isUnlocked()) {
+        let textQuery = "";
+        let serverFilter = JSON.parse(JSON.stringify(filter)); // Deep clone
 
+        // 1. Extraction du paramètre texte généré par buildJMAPFilter
+        if (serverFilter.operator === "AND" && Array.isArray(serverFilter.conditions)) {
+          const textCondIndex = serverFilter.conditions.findIndex((c: any) => c.text !== undefined);
+          if (textCondIndex !== -1) {
+            textQuery = String(serverFilter.conditions[textCondIndex].text).replace(/\*/g, "").trim();
+            serverFilter.conditions.splice(textCondIndex, 1); // Retrait du texte pour le filtre de structure
+            
+            if (serverFilter.conditions.length === 1) serverFilter = serverFilter.conditions[0];
+            else if (serverFilter.conditions.length === 0) serverFilter = {};
+          }
+        } else if (serverFilter.text !== undefined) {
+          textQuery = String(serverFilter.text).replace(/\*/g, "").trim();
+          serverFilter = {};
+        }
+
+        // 2. Si une requête textuelle est présente, on applique la fusion amont
+        if (textQuery) {
+          // Appel local (recherche dans le corps déchiffré)
+          const localMatchedIds = await aurionSession.search(textQuery);
+
+          // Appel serveur textuel uniquement (recherche dans From/To/Subject en clair)
+          const wildcardQuery = toWildcardQuery(textQuery);
+          const textQueryResponse = await this.request([
+            ["Email/query", {
+              accountId: targetAccountId,
+              filter: { text: wildcardQuery },
+              limit: 5000, // Suffisant pour attraper les occurrences textuelles d'en-tête
+            }, "0"]
+          ]);
+          const serverTextMatchedIds = (textQueryResponse.methodResponses?.[0]?.[1]?.ids || []) as string[];
+
+          // 🛠️ FUSION (UNION) DES DEUX RÉSULTATS TEXTUELS
+          const combinedTextIds = new Set([...localMatchedIds, ...serverTextMatchedIds]);
+
+          if (combinedTextIds.size === 0) {
+            return { emails: [], hasMore: false, total: 0 };
+          }
+
+          // 3. Récupération du scope structurel/métadonnées (Dossier, dates, drapeaux...)
+          const structuralQueryResponse = await this.request([
+            ["Email/query", {
+              accountId: targetAccountId,
+              ...(Object.keys(serverFilter).length > 0 ? { filter: serverFilter } : {}),
+              sort: [{ property: "receivedAt", isAscending: false }],
+              limit: 10000,
+            }, "0"]
+          ]);
+          const serverStructuralIds = (structuralQueryResponse.methodResponses?.[0]?.[1]?.ids || []) as string[];
+
+          // INTERSECTION FINALE
+          // On ne garde que les messages qui valident la structure ET qui sont dans notre Union textuelle
+          const mergedIds = serverStructuralIds.filter(id => combinedTextIds.has(id));
+          const total = mergedIds.length;
+
+          if (total === 0) return { emails: [], hasMore: false, total: 0 };
+
+          // 4. Pagination et hydratation
+          const paginatedIds = mergedIds.slice(position, position + limit);
+          
+          const getResponse = await this.request([
+            ["Email/get", {
+              accountId: targetAccountId,
+              ids: paginatedIds,
+              properties: [...EMAIL_LIST_PROPERTIES],
+            }, "0"]
+          ]);
+
+          const emailsUnsorted = (getResponse.methodResponses?.[0]?.[1]?.list || []) as Email[];
+          const emailMap = new Map(emailsUnsorted.map(e => [e.id, e]));
+          const emails = paginatedIds.map(id => emailMap.get(id)).filter(Boolean) as Email[];
+
+          const hasMore = position + emails.length < total;
+          return { emails, hasMore, total };
+        }
+      }
+
+      // =========================================================================
+      // FALLBACK STANDARD (Si Aurion verrouillé ou pas de texte recherché)
+      // =========================================================================
+      const response = await this.request([
+        ["Email/query", { accountId: targetAccountId, filter, sort: [{ property: "receivedAt", isAscending: false }], limit, position, calculateTotal: true }, "0"],
+        ["Email/get", { accountId: targetAccountId, "#ids": { resultOf: "0", name: "Email/query", path: "/ids" }, properties: [...EMAIL_LIST_PROPERTIES] }, "1"],
+      ]);
+      // END AURION
       const queryResponse = response.methodResponses?.[0]?.[1];
       const emails = (response.methodResponses?.[1]?.[1]?.list || []) as Email[];
       emails.sort((a: Email, b: Email) =>
