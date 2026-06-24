@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import DOMPurify from "dompurify";
 import { Email, ContactCard, Mailbox } from "@/lib/jmap/types";
-import { emailExportFilename, attachmentDownloadFilename, DEFAULT_EMAIL_TEMPLATE, DEFAULT_ATTACHMENT_TEMPLATE } from "@/lib/download-filename";
+import { emailExportFilename, attachmentDownloadFilename, attachmentsBundleFilename, DEFAULT_EMAIL_TEMPLATE, DEFAULT_ATTACHMENT_TEMPLATE } from "@/lib/download-filename";
 import { EML_IMPORT_ACCEPT, expandImportableEmails } from "@/lib/eml-import";
 import { EMAIL_IFRAME_SANITIZE_CONFIG, blockExternalResourcesOnNode, collapseBlockedImageContainers, escapeHtml, plainTextToSafeHtml, sanitizeEmailHtml, sanitizePlainTextRenderedHtml } from "@/lib/email-sanitization";
 import { hasMeaningfulHtmlBody } from "@/lib/signature-utils";
@@ -1004,6 +1004,7 @@ export function EmailViewer({
   const [showAllBesideAttachments, setShowAllBesideAttachments] = useState(false);
   const [showAllMobileAttachments, setShowAllMobileAttachments] = useState(false);
   const [showAllBelowHeaderAttachments, setShowAllBelowHeaderAttachments] = useState(false);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [visibleBelowHeaderCount, setVisibleBelowHeaderCount] = useState<number | null>(null);
   const belowHeaderRowRef = useRef<HTMLDivElement>(null);
   const belowHeaderGhostRef = useRef<HTMLDivElement>(null);
@@ -2789,6 +2790,86 @@ export function EmailViewer({
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   }, [onDownloadAttachment, email?.id, resolveAttachmentName]);
 
+  // Bundle every attachment of this email into a single .zip and download it.
+  // Fetches blob-backed attachments through the JMAP client and reuses already
+  // decoded bytes for S/MIME-decrypted and TNEF-extracted ones. Individual
+  // failures are skipped so a single bad blob doesn't sink the whole archive.
+  const handleDownloadAllAttachments = useCallback(async () => {
+    if (isDownloadingAll || effectiveAttachments.length === 0) return;
+    setIsDownloadingAll(true);
+    try {
+      const { default: JSZip } = await import('jszip');
+      const zip = new JSZip();
+      const used = new Set<string>();
+      // Zip entries must be unique; suffix collisions with " (n)" before the
+      // extension so duplicates stay recognisable.
+      const uniqueName = (raw: string): string => {
+        const base = raw || 'attachment';
+        if (!used.has(base)) { used.add(base); return base; }
+        const dot = base.lastIndexOf('.');
+        const stem = dot > 0 ? base.slice(0, dot) : base;
+        const ext = dot > 0 ? base.slice(dot) : '';
+        let i = 1;
+        let candidate = `${stem} (${i})${ext}`;
+        while (used.has(candidate)) { i++; candidate = `${stem} (${i})${ext}`; }
+        used.add(candidate);
+        return candidate;
+      };
+
+      let added = 0;
+      for (const attachment of effectiveAttachments) {
+        const entryName = uniqueName(getAttachmentDisplayName(attachment.name, attachment.type));
+        try {
+          if (attachment.blobId && client) {
+            const blob = await client.fetchBlob(attachment.blobId, attachment.name || entryName, attachment.type);
+            zip.file(entryName, blob);
+            added++;
+          } else if (attachment.tnefData) {
+            zip.file(entryName, attachment.tnefData);
+            added++;
+          } else if (attachment.decryptedAttachment) {
+            const bytes = getAttachmentContentBytes(attachment.decryptedAttachment);
+            if (bytes && bytes.byteLength > 0) {
+              zip.file(entryName, bytes);
+              added++;
+            }
+          }
+        } catch {
+          // Skip individual failures; remaining attachments still bundle.
+        }
+      }
+
+      if (added === 0) return;
+
+      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+      const objectUrl = URL.createObjectURL(zipBlob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = attachmentsBundleFilename(email);
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  }, [isDownloadingAll, effectiveAttachments, client, email]);
+
+  // Shared "Download all" chip, shown only when bundling is worthwhile (2+).
+  const downloadAllButton = effectiveAttachments.length > 1 ? (
+    <button
+      onClick={(e) => { e.stopPropagation(); handleDownloadAllAttachments(); }}
+      disabled={isDownloadingAll}
+      title={t('download_all')}
+      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-md border border-border/50 transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-wait"
+    >
+      {isDownloadingAll
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        : <FileArchive className="w-3.5 h-3.5" />}
+      {t('download_all')}
+    </button>
+  ) : null;
+
   // Pre-fetch object URLs for image attachments so their actual contents can be
   // rendered as thumbnails inside the chip. Skips images larger than 10 MB.
   useEffect(() => {
@@ -4533,6 +4614,7 @@ export function EmailViewer({
                       +{effectiveAttachments.length - 2} {t('more')}
                     </button>
                   )}
+                  {downloadAllButton}
                   {/* Floating popup for remaining attachments */}
                   {showAllBesideAttachments && effectiveAttachments.length > 2 && (
                     <>
@@ -5181,8 +5263,8 @@ export function EmailViewer({
       {/* === ATTACHMENTS below header (below-header mode, desktop only) === */}
       {attachmentPosition === 'below-header' && effectiveAttachments.length > 0 && (
         <div className="hidden lg:block bg-background border-b border-border px-4 lg:px-6 py-2">
-          <div className="relative">
-          <div ref={belowHeaderRowRef} className="relative flex items-center gap-2 overflow-hidden">
+          <div className="relative flex items-center gap-2">
+          <div ref={belowHeaderRowRef} className="relative flex items-center gap-2 overflow-hidden flex-1 min-w-0">
             {/* Hidden ghost row used purely for measuring chip widths */}
             <div
               ref={belowHeaderGhostRef}
@@ -5303,6 +5385,7 @@ export function EmailViewer({
               </button>
             )}
           </div>
+            {downloadAllButton}
             {showAllBelowHeaderAttachments && visibleBelowHeaderCount !== null && effectiveAttachments.length > visibleBelowHeaderCount && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowAllBelowHeaderAttachments(false)} />
@@ -5440,6 +5523,7 @@ export function EmailViewer({
                   +{effectiveAttachments.length - 2} {t('more')}
                 </button>
               )}
+              {downloadAllButton}
               {showAllMobileAttachments && effectiveAttachments.length > 2 && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowAllMobileAttachments(false)} />
