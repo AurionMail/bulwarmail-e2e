@@ -51,6 +51,7 @@ export interface FeatureGates {
   settingsExportEnabled: boolean;
   customKeywordsEnabled: boolean;
   templatesEnabled: boolean;
+  calendarEnabled: boolean;
   calendarTasksEnabled: boolean;
   smimeEnabled: boolean;
   externalContentEnabled: boolean;
@@ -75,6 +76,7 @@ export const DEFAULT_FEATURE_GATES: FeatureGates = {
   settingsExportEnabled: true,
   customKeywordsEnabled: true,
   templatesEnabled: true,
+  calendarEnabled: true,
   calendarTasksEnabled: true,
   smimeEnabled: true,
   externalContentEnabled: true,

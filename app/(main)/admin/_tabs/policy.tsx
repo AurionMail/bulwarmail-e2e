@@ -13,6 +13,7 @@ const FEATURE_GATE_LABELS: Partial<Record<keyof FeatureGates, { label: string; d
   settingsExportEnabled: { label: 'Settings Export/Import', description: 'Allow users to export and import settings JSON' },
   customKeywordsEnabled: { label: 'Custom Keywords', description: 'Allow user-created labels and tags' },
   templatesEnabled: { label: 'Email Templates', description: 'Allow email template creation and library' },
+  calendarEnabled: { label: 'Calendar', description: 'Enable calendar features and views' },
   calendarTasksEnabled: { label: 'Calendar Tasks', description: 'Show task panel in calendar view' },
   contactsEnabled: { label: 'Contacts', description: 'Enable contacts/address book features' },
   smimeEnabled: { label: 'S/MIME', description: 'Enable certificate management and email signing' },

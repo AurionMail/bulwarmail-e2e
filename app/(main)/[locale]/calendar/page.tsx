@@ -16,6 +16,7 @@ import { useEmailStore } from "@/stores/email-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useIdentityStore } from "@/stores/identity-store";
 import { useAccountStore } from "@/stores/account-store";
+import { usePolicyStore } from "@/stores/policy-store";
 import { toast } from "@/stores/toast-store";
 import { useIsDesktop, useIsMobile } from "@/hooks/use-media-query";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,7 @@ export default function CalendarPage() {
     removeCalendar, clearCalendarEvents,
     refreshAllSubscriptions, icalSubscriptions,
   } = useCalendarStore();
+  const calendarEnabled = usePolicyStore((s) => s.isFeatureEnabled('calendarEnabled'));
   const { firstDayOfWeek, timeFormat, showWeekNumbers, enableCalendarTasks, showTasksOnCalendar, calendarHoverPreview, showBirthdayCalendar, birthdayCalendarColor, updateSetting } = useSettingsStore();
   const sharedCalendarColors = useSettingsStore((s) => s.sharedCalendarColors);
   const setSharedCalendarColor = useSettingsStore((s) => s.setSharedCalendarColor);
@@ -179,10 +181,13 @@ export default function CalendarPage() {
     if (initialCheckDone && !isAuthenticated && !authLoading) {
       try { sessionStorage.setItem('redirect_after_login', window.location.pathname); } catch { /* ignore */ }
       redirectToLogin();
+    } else if (client && !calendarEnabled) {
+      // Calendar disabled by admin policy - send the user back to mail.
+      router.push("/");
     } else if (client && !supportsCalendar && !pendingWebcalAccountChoice && !isProtocolAccountSwitching && !pendingSubscription && !showWebcalActionChoice && !hasPendingWebcal()) {
       router.push("/");
     }
-  }, [initialCheckDone, isAuthenticated, authLoading, client, supportsCalendar, pendingWebcalAccountChoice, isProtocolAccountSwitching, pendingSubscription, showWebcalActionChoice, router]);
+  }, [initialCheckDone, isAuthenticated, authLoading, client, calendarEnabled, supportsCalendar, pendingWebcalAccountChoice, isProtocolAccountSwitching, pendingSubscription, showWebcalActionChoice, router]);
 
   useEffect(() => {
     if (error) {
@@ -1164,6 +1169,7 @@ export default function CalendarPage() {
   ) : null;
 
   if (!isAuthenticated) return null;
+  if (!calendarEnabled) return null;
   if (!supportsCalendar) return renderWebcalAccountPicker();
 
   const renderView = () => {
