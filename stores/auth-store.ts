@@ -18,7 +18,7 @@ import { notifyParent } from '@/lib/iframe-bridge';
 import { snapshotAccount, restoreAccount, clearAllStores, evictAccount, evictAll } from '@/lib/account-state-manager';
 import type { Identity } from '@/lib/jmap/types';
 
-import { aurionApi, aurionSession, aurionStorage } from '@/lib/aurion';//AURION
+import { aurionApi, aurionSession, aurionStorage, runInitialIndexing } from '@/lib/aurion';//AURION
 import type { SecurityMode } from 'aurion-crypto-sdk';// AURION
 import { cryptoWorkerBridge } from '@/lib/aurion/worker-bridge';//AURION
 
@@ -472,10 +472,12 @@ export const useAuthStore = create<AuthState>()(
           const keyContainer = await aurionApi.getEncryptedPrivateKey();
           await aurionSession.decryptAndLoadPrivateKeys(keyContainer.keys, salts.salt_client);
           await cryptoWorkerBridge.initWorkerSession(
+            aurionSession,
                   keyContainer.keys, 
                   salts.salt_client, 
                   aurionSession.h0
                 );
+          
           //
           //
           //-----------------------END AURION--------------
@@ -485,6 +487,7 @@ export const useAuthStore = create<AuthState>()(
           // Resolve account/slot info up front so writes can start immediately.
           const accountStore = useAccountStore.getState();
           const accountId = generateAccountId(username, serverUrl);
+          await runInitialIndexing(client, accountId);// AURION
           const cookieSlot = accountStore.hasAccount(username, serverUrl)
             ? (accountStore.getAccountById(accountId)?.cookieSlot ?? accountStore.getNextCookieSlot())
             : accountStore.getNextCookieSlot();
@@ -1510,10 +1513,12 @@ export const useAuthStore = create<AuthState>()(
                 debug.log('auth', `Aurion OpenPGP Keyring loaded successfully for ${targetAccount.username}`);
                 // avec le h0 pour qu'il fasse son propre déchiffrement isolé
                 await cryptoWorkerBridge.initWorkerSession(
+                  aurionSession,
                   keyContainer.keys, 
                   salts.salt_client, 
                   aurionSession.h0
                 );
+                await runInitialIndexing(targetClient, targetId);
               } catch (cryptoErr) {
                 debug.error('Failed to load Aurion PGP Keys during session restoration:', cryptoErr);
               }

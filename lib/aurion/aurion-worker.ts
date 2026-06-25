@@ -1,6 +1,7 @@
 import { AurionSession } from 'aurion-crypto-sdk';
 import { EmailBodyValue } from '../jmap/types';
 
+// Le worker gère sa propre session et son searchEngine en RAM
 const workerSession = new AurionSession(null); 
 
 self.onmessage = async (event) => {
@@ -25,34 +26,37 @@ self.onmessage = async (event) => {
     return;
   }
 
-  // --- TRAITEMENT DU FLUX ENTRANT ---
+  // --- TRAITEMENT DU FLUX ENTRANT (GETEMAIL / GETEMAILS) ---
   if (action === 'DECRYPT_BATCH') {
     try {
       const { emails } = data;
       const processedEmails = [];
+      const indexUpdates = []; // Pour notifier l'UI des nouveaux tokens extraits
 
       for (const email of emails) {
         const processedEmail = { ...email };
+        let clearTextBody: string | null = null;
 
         // 1. Déchiffrement du corps des messages (getEmail)
         if (processedEmail.bodyValues) {
           const updatedBodyValues: Record<string, EmailBodyValue> = { ...processedEmail.bodyValues };
-         
           let isDecrypted = false;
 
           for (const partId in updatedBodyValues) {
             const bodyValue = updatedBodyValues[partId];
             
             if (bodyValue && bodyValue.value.includes('-----BEGIN PGP MESSAGE-----')) {
-              const clearText = await workerSession.decryptCiphertext(bodyValue.value, processedEmail.accountLabel);
+              clearTextBody = await workerSession.decryptCiphertext(bodyValue.value, processedEmail.accountLabel);
               
-              // FIX: Deep copy de l'objet EmailBodyValue pour éviter de muter la référence d'origine
               updatedBodyValues[partId] = {
                 ...bodyValue,
-                value: clearText,
+                value: clearTextBody,
                 isTruncated: false
               };
               isDecrypted = true;
+            } else if (bodyValue && !bodyValue.value.includes('-----BEGIN PGP MESSAGE-----')) {
+              // Gère le cas où le mail est déjà en clair (re-consultation)
+              clearTextBody = bodyValue.value;
             }
           }
           
@@ -64,7 +68,17 @@ self.onmessage = async (event) => {
           }
         }
 
-        // 2. Déchiffrement des métadonnées de liste (getEmails)
+        // 💡 ALIMENTATION DE L'INDEX LOCAL DU WORKER SI UN TEXTE CLAIR EST DISPONIBLE
+        if (clearTextBody) {
+          // Indexation en RAM côté Worker
+          workerSession.searchEngine.indexMail(processedEmail.id, [], clearTextBody);
+          
+          // On prépare le token payload pour le remonter à l'UI
+          const tokens = workerSession.extractSearchTokens(clearTextBody);
+          indexUpdates.push({ id: processedEmail.id, tokens });
+        }
+
+        // 2. Déchiffrement des métadonnées de liste (preview / subject)
         if (processedEmail.preview && processedEmail.preview.includes('-----BEGIN PGP MESSAGE-----')) {
           try {
             processedEmail.preview = await workerSession.decryptCiphertext(processedEmail.preview, processedEmail.accountLabel);
@@ -84,11 +98,51 @@ self.onmessage = async (event) => {
         processedEmails.push(processedEmail);
       }
 
-      self.postMessage({ id, success: true, data: processedEmails });
+      // On renvoie les emails déchiffrés ET les structures de tokens à l'UI
+      self.postMessage({ 
+        id, 
+        success: true, 
+        data: { 
+          emails: processedEmails, 
+          indexUpdates 
+        } 
+      });
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      self.postMessage({ id, success: false, error: "Worker Keyring decryption failed: " + errorMessage });
+      self.postMessage({ id, success: false, error: "Worker decryption batch failed: " + errorMessage });
     }
+    return;
+  }
+
+  // --- ⚡ INDEXATION GLOBALE INITIALE OU EN ARRIÈRE-PLAN ---
+  if (action === 'INDEX_BATCH_SILENT') {
+    try {
+      const { encryptedMails } = data; // Contient un tableau de { id, body }
+      const indexUpdates = [];
+
+      for (const mail of encryptedMails) {
+        if (mail.body && mail.body.includes('-----BEGIN PGP MESSAGE-----')) {
+          try {
+            const clearTextBody = await workerSession.decryptCiphertext(mail.body);
+            
+            // Indexation locale au Worker
+            workerSession.searchEngine.indexMail(mail.id, [], clearTextBody);
+            
+            // Extraction pour l'UI
+            const tokens = workerSession.extractSearchTokens(clearTextBody);
+            indexUpdates.push({ id: mail.id, tokens });
+          } catch (e) {
+            console.warn(`[Worker Index] Impossible de déchiffrer le mail ${mail.id} pour indexation:`, e);
+          }
+        }
+      }
+
+      self.postMessage({ id, success: true, data: { indexUpdates } });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      self.postMessage({ id, success: false, error: "Worker silent indexing failed: " + errorMessage });
+    }
+    return;
   }
 };

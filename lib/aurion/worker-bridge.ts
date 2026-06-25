@@ -1,13 +1,14 @@
+import { AurionSession } from 'aurion-crypto-sdk';
 import { Email } from '../jmap/types';
 
 class CryptoWorkerBridge {
   private worker: Worker | null = null;
   private pendingRequests: Map<string, { resolve: (value: any) => void; reject: (reason: any) => void }> = new Map();
-  private isInitialized: boolean = false;
+  public isInitialized: boolean = false;
+  private aurionSession: AurionSession | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
-      // Next.js va intercepter cette syntaxe et compiler le Worker (et ses dépendances Node) automatiquement !
       this.worker = new Worker(new URL('./aurion-worker.ts', import.meta.url), {
         type: 'module',
       });
@@ -18,7 +19,19 @@ class CryptoWorkerBridge {
         
         if (promise) {
           if (success) {
-            promise.resolve(data);
+            // 💡 SYNCHRONISATION DYNAMIQUE DE L'INDEX UI
+            // Si le worker renvoie des mises à jour d'index (tokens), on les injecte dans la session UI
+            if (data && data.indexUpdates && Array.isArray(data.indexUpdates)) {
+              this.applyTokensToUISession(data.indexUpdates);
+            }
+
+            // On résout la promesse avec la donnée attendue (le tableau d'emails ou le statut d'indexation)
+            // Si l'action était DECRYPT_BATCH, la structure finale attendue par l'app est data.emails
+            if (data && data.emails) {
+              promise.resolve(data.emails);
+            } else {
+              promise.resolve(data);
+            }
           } else {
             promise.reject(new Error(error));
           }
@@ -28,15 +41,33 @@ class CryptoWorkerBridge {
     }
   }
 
+  /**
+   * Helper privé pour injecter les tokens calculés par le worker dans l'index MiniSearch principal
+   */
+  private applyTokensToUISession(indexUpdates: Array<{ id: string, tokens: string[] }>) {
+    if (typeof this.aurionSession !== 'undefined' && this.aurionSession && this.aurionSession.isUnlocked()) {
+      for (const update of indexUpdates) {
+        // Si l'email n'est pas déjà dans l'index principal, on l'ajoute directement avec ses tokens pré-calculés
+        if (!this.aurionSession.searchEngine.hasDocument(update.id)) {
+          // Astuce : on simule le clearText en passant les tokens re-joints par des espaces
+          this.aurionSession.searchEngine.indexMail(update.id, [], update.tokens.join(' '));
+        }
+      }
+      // Sauvegarde silencieuse de l'index sur disque si nécessaire
+      this.aurionSession.saveSearchIndexToStorage();
+    }
+  }
 /**
    * Initialise le Worker en lui passant les clés chiffrées et le matériel de dérivation
    */
   public async initWorkerSession(
+    session: AurionSession,
     encryptedKeys: Array<{ encrypted_private_key: string; identity_email?: string }>, 
     saltClient: string,
     h0: Uint8Array | null
   ): Promise<void> {
     if (!this.worker) return;
+    this.aurionSession = session;
 
     return new Promise((resolve, reject) => {
       const requestId = crypto.randomUUID();
@@ -54,15 +85,16 @@ class CryptoWorkerBridge {
         data: { 
           encryptedKeys, 
           saltClient,
-          // On passe le buffer sous-jacent de h0 pour le cloner proprement
           h0: h0 ? h0.buffer : null 
         }
       });
     });
   }
 
+  /**
+   * Appelé lors du flux standard (Lazy loading) : déchiffre ET indexe en tâche de fond
+   */
   public async processMailBatchAsync(emails: Email[]): Promise<Email[]> {
-    // Si le worker n'est pas prêt ou pas initialisé, on évite de bloquer l'UI
     if (!this.worker || !this.isInitialized || emails.length === 0) return emails;
 
     return new Promise((resolve, reject) => {
@@ -73,6 +105,28 @@ class CryptoWorkerBridge {
         id: requestId,
         action: 'DECRYPT_BATCH',
         data: { emails }
+      });
+    });
+  }
+
+  /**
+   * Appelé pour l'indexation globale (Initialisation ou bouton de reconstruction)
+   * Envoie uniquement les payloads minimums à traiter pour économiser les clones de contexte
+   */
+  public async indexMailBatchAsync(encryptedMails: Array<{ id: string; body: string }>): Promise<void> {
+    if (!this.worker || !this.isInitialized || encryptedMails.length === 0) return;
+
+    return new Promise((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      this.pendingRequests.set(requestId, { 
+        resolve: () => resolve(), 
+        reject 
+      });
+
+      this.worker!.postMessage({
+        id: requestId,
+        action: 'INDEX_BATCH_SILENT',
+        data: { encryptedMails }
       });
     });
   }
