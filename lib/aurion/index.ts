@@ -86,3 +86,61 @@ export async function runInitialIndexing(client: any, targetAccountId: string): 
     console.error("[Index Initial] Erreur critique lors de l'indexation globale :", error);
   }
 }
+
+/**
+ * 
+ * Analyse le routage de l'API et génère/ordonnance les clés manquantes via le Worker.
+ */
+export async function verifyAndSyncRouting(): Promise<void> {
+  // 1. Vérifications initiales d'états
+  if (!aurionSession || !aurionSession.isUnlocked()) {
+    console.warn('[Routing Sync] Annulation : La session locale est verrouillée.');
+    return;
+  }
+  if (!cryptoWorkerBridge || !cryptoWorkerBridge.isInitialized) {
+    console.warn('[Routing Sync] Annulation : Le CryptoWorker n\'est pas prêt.');
+    return;
+  }
+
+  try {
+    console.log('[Routing Sync] Analyse de l\'état des alias et groupes...');
+    const syncState = await aurionApi.syncRouting();
+    let hasGeneratedKeys = false;
+    for (const identity of syncState.identities) {
+      
+      // Une identité demande la génération d'une nouvelle paire de clés (Nouveau groupe / Nouvel alias)
+      if (identity.needs_key_gen) {
+        console.log(`[Routing Sync] Génération de clés requise pour l'identité : ${identity.email}`);
+
+        // Préparation de la liste des destinataires cryptographiques (soi-même + les membres)
+        // Le serveur nous renvoie la liste complète des clés publiques des personnes devant avoir accès au groupe
+        const targetMembers = identity.members || [];
+        if (targetMembers.length === 0) {
+          console.warn(`[Routing Sync] L'identité partagée ${identity.email} n'a aucun membre listé.`);
+          continue;
+        }
+
+        // On délègue la génération lourde et les chiffrements asymétriques croisés au Worker
+        const uploadPayload = await cryptoWorkerBridge.generateAndShareIdentityKeysAsync({
+          identityId: identity.identity_id,
+          email: identity.email,
+          members: targetMembers
+        });
+
+        // Envoi des enveloppes générées à l'API Go
+        await aurionApi.uploadSynchronizedKeys(uploadPayload);
+        console.log(`[Routing Sync] Clés partagées et publiées avec succès pour : ${identity.email}`);
+        hasGeneratedKeys = true;
+      }
+    }
+    // 3. Si au moins une clé a été générée, on notifie l'application
+    if (hasGeneratedKeys) {
+        // Option B : Direct, brutal et efficace si tu ne veux pas t'embêter avec un état d'UI
+        alert("De nouveaux alias ou groupes ont été configurés. L'application va redémarrer pour activer le chiffrement.");
+        window.location.reload();
+    }
+
+  } catch (error) {
+    console.error('[Routing Sync] Échec de la synchronisation du routage :', error);
+  }
+}

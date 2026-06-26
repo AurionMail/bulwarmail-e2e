@@ -130,6 +130,41 @@ class CryptoWorkerBridge {
       });
     });
   }
+  /**
+   * Envoie une demande de génération de clés et de chiffrement croisé pour les membres d'un groupe/alias au Worker.
+   * Retourne le payload prêt à être expédié à l'API Go.
+   */
+  public async generateAndShareIdentityKeysAsync(data: {
+    identityId: string;
+    email: string;
+    members: Array<{ user_id: string; public_key: string }>;
+  }): Promise<{
+    identity_id: string;
+    armored_public_key: string;
+    shares: Array<{ user_id: string; encrypted_private_key: string }>;
+  }> {
+    // Sécurité : On s'assure que le Worker est instancié et a ses clés maîtresse chargées
+    if (!this.worker || !this.isInitialized) {
+      throw new Error("CryptoWorkerBridge is not initialized or worker is unavailable");
+    }
+
+    return new Promise((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      
+      // Enregistrement de la promesse en attente du retour du worker
+      this.pendingRequests.set(requestId, { 
+        resolve, 
+        reject 
+      });
+
+      // Envoi du signal au Worker
+      this.worker!.postMessage({
+        id: requestId,
+        action: 'GENERATE_AND_SHARE_KEYS',
+        data
+      });
+    });
+  }
 }
 
 export const cryptoWorkerBridge = new CryptoWorkerBridge();

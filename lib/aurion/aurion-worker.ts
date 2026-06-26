@@ -1,5 +1,6 @@
 import { AurionSession } from 'aurion-crypto-sdk';
 import { EmailBodyValue } from '../jmap/types';
+import * as openpgp from 'openpgp'; // Nécessaire pour lire les fingerprints locaux
 
 // Le worker gère sa propre session et son searchEngine en RAM
 const workerSession = new AurionSession(null); 
@@ -144,5 +145,39 @@ self.onmessage = async (event) => {
       self.postMessage({ id, success: false, error: "Worker silent indexing failed: " + errorMessage });
     }
     return;
+  
   }
+
+
+
+// aurion-worker.ts
+
+if (action === 'GENERATE_AND_SHARE_KEYS') {
+  try {
+    const { identityId, email, members } = data; // members: Array<{ user_id, public_key }>
+
+    // Utilisation de la méthode adaptée qui prend les ID utilisateurs
+    const groupMaterial = await workerSession.generateGroupKeys(email, members);
+
+    // On renvoie directement le payload prêt à être consommé par l'API Go
+    self.postMessage({
+      id,
+      success: true,
+      data: {
+        identity_id: identityId,
+        armored_public_key: groupMaterial.groupPublicKeyArmored,
+        shares: groupMaterial.shares
+      }
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    self.postMessage({ 
+      id, // 💡 CORRECTION : On passe le vrai 'id' reçu, pas le booléen 'false'
+      success: false, 
+      error: "Worker SDK key generation failed: " + errorMessage 
+    });
+  }
+  return;
+}
 };

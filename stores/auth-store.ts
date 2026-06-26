@@ -18,7 +18,7 @@ import { notifyParent } from '@/lib/iframe-bridge';
 import { snapshotAccount, restoreAccount, clearAllStores, evictAccount, evictAll } from '@/lib/account-state-manager';
 import type { Identity } from '@/lib/jmap/types';
 
-import { aurionApi, aurionSession, aurionStorage, runInitialIndexing } from '@/lib/aurion';//AURION
+import { aurionApi, aurionSession, aurionStorage, runInitialIndexing, verifyAndSyncRouting } from '@/lib/aurion';//AURION
 import type { SecurityMode } from 'aurion-crypto-sdk';// AURION
 import { cryptoWorkerBridge } from '@/lib/aurion/worker-bridge';//AURION
 
@@ -488,6 +488,7 @@ export const useAuthStore = create<AuthState>()(
           const accountStore = useAccountStore.getState();
           const accountId = generateAccountId(username, serverUrl);
           await runInitialIndexing(client, accountId);// AURION
+          await verifyAndSyncRouting(); //AURION
           const cookieSlot = accountStore.hasAccount(username, serverUrl)
             ? (accountStore.getAccountById(accountId)?.cookieSlot ?? accountStore.getNextCookieSlot())
             : accountStore.getNextCookieSlot();
@@ -1518,7 +1519,8 @@ export const useAuthStore = create<AuthState>()(
                   salts.salt_client, 
                   aurionSession.h0
                 );
-                await runInitialIndexing(targetClient, targetId);
+                await runInitialIndexing(targetClient, targetId);//AURION
+                await verifyAndSyncRouting();//AURION
               } catch (cryptoErr) {
                 debug.error('Failed to load Aurion PGP Keys during session restoration:', cryptoErr);
               }
