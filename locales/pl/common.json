@@ -134,7 +134,10 @@
     "nav_label": "Nawigacja",
     "add_app": "Aplikacje",
     "shared": "Udostępnione",
-    "scheduled": "Zaplanowane"
+    "scheduled": "Zaplanowane",
+    "unified_all_unread": "Wszystkie nieprzeczytane",
+    "unified_all_starred": "Wszystkie oznaczone gwiazdką",
+    "unified_all_mail": "Cała poczta"
   },
   "protocol_handlers": {
     "title": "Aplikacje domyślne",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Dodaj do kontaktów",
       "copied": "Skopiowano!",
       "copy_failed": "Nie udało się skopiować"
-    }
+    },
+    "send_now": "Wyślij teraz"
   },
   "email_composer": {
     "read_receipt_on": "Zażądano potwierdzenia przeczytania (kliknij, aby wyłączyć)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Przełącz na perski"
   },
   "settings": {
     "title": "Ustawienia",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Układ dla zaawansowanych użytkowników (tylko na komputerze) z przeglądaniem wiadomości w wielu kartach i obiegami pracy między kontami. Standardowy interfejs pozostaje nietknięty; możesz wrócić w dowolnej chwili.",
         "open_label": "Otwórz interfejs Pro",
         "back_to_standard": "Powrót do standardu"
+      },
+      "cross_unread": {
+        "label": "Wszystkie konta: Nieprzeczytane",
+        "description": "Pokazuje pozycję w sekcji Wszystkie konta z nieprzeczytaną pocztą ze wszystkich kont, obejmującą wszystkie foldery oprócz spamu, wysłanych, archiwum, kosza i roboczych."
+      },
+      "cross_starred": {
+        "label": "Wszystkie konta: Oznaczone gwiazdką",
+        "description": "Pokazuje pozycję w sekcji Wszystkie konta z pocztą oznaczoną gwiazdką ze wszystkich kont, obejmującą wszystkie foldery oprócz spamu, wysłanych, archiwum, kosza i roboczych."
+      },
+      "cross_all": {
+        "label": "Wszystkie konta: Cała poczta",
+        "description": "Pokazuje pozycję w sekcji Wszystkie konta z całą pocztą ze wszystkich kont, obejmującą wszystkie foldery oprócz spamu, wysłanych, archiwum, kosza i roboczych."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Archiwizuj",
         "tag": "Etykieta",
         "spam": "Oznacz jako spam",
+        "not_spam": "Nie spam",
         "none_selected": "Nie wybrano żadnych akcji",
         "mode_label": "Tryb wyświetlania",
         "mode_inline": "Wbudowany",
@@ -1226,6 +1247,10 @@
         "off": "Wyłączone",
         "seconds": "{seconds} sekund",
         "unsupported": "Bieżące konto nie zgłasza obsługi opóźnionej wysyłki. Ustawienie pozostanie zapisane dla innych kont."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Udostępnione"
     },
     "address_books": {
+      "create": "Nowa książka adresowa",
+      "created": "Utworzono książkę adresową",
+      "create_failed": "Nie udało się utworzyć książki adresowej",
       "title": "Moje książki adresowe",
       "shared_prefix": "Udostępnione: {name}",
       "moved": "Kontakt przeniesiono do {name}",

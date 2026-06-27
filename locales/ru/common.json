@@ -134,7 +134,10 @@
     "nav_label": "Навигация",
     "add_app": "Приложения",
     "shared": "Общие",
-    "scheduled": "Запланировано"
+    "scheduled": "Запланировано",
+    "unified_all_unread": "Все непрочитанные",
+    "unified_all_starred": "Все помеченные",
+    "unified_all_mail": "Вся почта"
   },
   "protocol_handlers": {
     "title": "Приложения по умолчанию",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Добавить в контакты",
       "copied": "Скопировано!",
       "copy_failed": "Не удалось скопировать"
-    }
+    },
+    "send_now": "Отправить сейчас"
   },
   "email_composer": {
     "read_receipt_on": "Запрошено уведомление о прочтении (нажмите, чтобы отключить)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Переключить на фарси"
   },
   "settings": {
     "title": "Настройки",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Макет для опытных пользователей только для настольных устройств с просмотром сообщений в нескольких вкладках и работой между аккаунтами. Стандартный интерфейс не меняется; вы можете вернуться в любое время.",
         "open_label": "Открыть Pro-интерфейс",
         "back_to_standard": "К стандартному"
+      },
+      "cross_unread": {
+        "label": "Все аккаунты: Непрочитанные",
+        "description": "Показывает в разделе «Все аккаунты» запись с непрочитанными письмами из всех аккаунтов, по всем папкам, кроме спама, отправленных, архива, корзины и черновиков."
+      },
+      "cross_starred": {
+        "label": "Все аккаунты: Помеченные",
+        "description": "Показывает в разделе «Все аккаунты» запись с помеченными письмами из всех аккаунтов, по всем папкам, кроме спама, отправленных, архива, корзины и черновиков."
+      },
+      "cross_all": {
+        "label": "Все аккаунты: Вся почта",
+        "description": "Показывает в разделе «Все аккаунты» запись со всеми письмами из всех аккаунтов, по всем папкам, кроме спама, отправленных, архива, корзины и черновиков."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Архивировать",
         "tag": "Тег",
         "spam": "Отметить как спам",
+        "not_spam": "Не спам",
         "none_selected": "Действия не выбраны",
         "mode_label": "Режим отображения",
         "mode_inline": "Встроенный",
@@ -1226,6 +1247,10 @@
         "off": "Выкл.",
         "seconds": "{seconds} сек.",
         "unsupported": "Текущая учетная запись не заявляет поддержку отложенной отправки. Настройка сохранится для других учетных записей."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Общий"
     },
     "address_books": {
+      "create": "Новая адресная книга",
+      "created": "Адресная книга создана",
+      "create_failed": "Не удалось создать адресную книгу",
       "title": "Мои адресные книги",
       "shared_prefix": "Общая: {name}",
       "moved": "Контакт перемещён в {name}",

@@ -7,6 +7,13 @@ import {
   hasRichFormatting,
   plainTextToSafeHtml,
   EMAIL_SANITIZE_CONFIG,
+  EMAIL_IFRAME_SANITIZE_CONFIG,
+  isExternalResourceUrl,
+  decodeCssEscapes,
+  styleHasExternalUrl,
+  stripExternalCssUrls,
+  blockExternalResourcesOnNode,
+  TRANSPARENT_BLOCKED_PIXEL,
 } from '../email-sanitization';
 
 describe('email-sanitization', () => {
@@ -321,6 +328,205 @@ describe('email-sanitization', () => {
       // blob: and data: URLs should NOT be blocked (they don't start with http/https)
       expect(clean).toContain('blob:');
       expect(clean).toContain('data:image/gif');
+    });
+  });
+
+  describe('isExternalResourceUrl', () => {
+    it('detects http(s) and protocol-relative URLs', () => {
+      expect(isExternalResourceUrl('https://tracker.example/p.png')).toBe(true);
+      expect(isExternalResourceUrl('http://tracker.example/p.png')).toBe(true);
+      expect(isExternalResourceUrl('//tracker.example/p.png')).toBe(true);
+    });
+
+    it('sees through leading whitespace/newlines (imgNewlineSrc bypass)', () => {
+      expect(isExternalResourceUrl('\n\nhttps://tracker.example/p.png')).toBe(true);
+      expect(isExternalResourceUrl('  \t https://tracker.example/p.png')).toBe(true);
+      // Tab/newline removed anywhere in the URL by the parser.
+      expect(isExternalResourceUrl('h\nttps://tracker.example/p.png')).toBe(true);
+      expect(isExternalResourceUrl('ht\ttps://tracker.example/p.png')).toBe(true);
+    });
+
+    it('treats inline/local schemes as not external', () => {
+      expect(isExternalResourceUrl('data:image/png;base64,AAAA')).toBe(false);
+      expect(isExternalResourceUrl('blob:http://localhost/abc')).toBe(false);
+      expect(isExternalResourceUrl('cid:image001@example.com')).toBe(false);
+      expect(isExternalResourceUrl('/relative/path.png')).toBe(false);
+      expect(isExternalResourceUrl('')).toBe(false);
+      expect(isExternalResourceUrl(null)).toBe(false);
+      expect(isExternalResourceUrl(undefined)).toBe(false);
+    });
+  });
+
+  describe('decodeCssEscapes', () => {
+    it('decodes hex escapes (cssEscape bypass)', () => {
+      expect(decodeCssEscapes('\\68ttp://x')).toBe('http://x');
+      expect(decodeCssEscapes('\\000068ttps://x')).toBe('https://x');
+      // Hex escape consumes one trailing whitespace separator.
+      expect(decodeCssEscapes('\\68 ttp')).toBe('http');
+    });
+
+    it('decodes single-character escapes', () => {
+      expect(decodeCssEscapes('\\h\\t\\t\\p')).toBe('http');
+    });
+  });
+
+  describe('styleHasExternalUrl / stripExternalCssUrls', () => {
+    it('detects and strips plain external url()', () => {
+      const style = 'background:url(https://tracker.example/p.png)';
+      expect(styleHasExternalUrl(style)).toBe(true);
+      expect(stripExternalCssUrls(style)).toBe('background:url()');
+    });
+
+    it('detects and strips CSS-escaped external url()', () => {
+      const style = 'background:url(\\68ttps://tracker.example/p.png)';
+      expect(styleHasExternalUrl(style)).toBe(true);
+      expect(stripExternalCssUrls(style)).toBe('background:url()');
+    });
+
+    it('detects url() with whitespace/quotes', () => {
+      expect(styleHasExternalUrl("background: url( '\n https://t/p.png' )")).toBe(true);
+    });
+
+    it('leaves data: and relative url() untouched', () => {
+      const style = "background:url('data:image/png;base64,AAAA')";
+      expect(styleHasExternalUrl(style)).toBe(false);
+      expect(stripExternalCssUrls(style)).toBe(style);
+    });
+  });
+
+  describe('blockExternalResourcesOnNode (anti-tracking vectors)', () => {
+    function el(html: string): Element {
+      return parseHtmlSafely(`<body>${html}</body>`).body.firstElementChild!;
+    }
+
+    it('blocks an img whose src is hidden behind a leading newline', () => {
+      const img = el('<img src="">');
+      img.setAttribute('src', '\n\nhttps://tracker.example/pixel.png');
+      expect(blockExternalResourcesOnNode(img)).toBe(true);
+      expect(img.getAttribute('data-blocked-src')).toBe('https://tracker.example/pixel.png');
+      expect(img.getAttribute('src')).toBe(TRANSPARENT_BLOCKED_PIXEL);
+    });
+
+    it('blocks img srcset', () => {
+      const img = el('<img srcset="https://tracker.example/1x.png 1x, https://tracker.example/2x.png 2x">');
+      expect(blockExternalResourcesOnNode(img)).toBe(true);
+      expect(img.hasAttribute('srcset')).toBe(false);
+      expect(img.getAttribute('data-blocked-srcset')).toContain('tracker.example');
+    });
+
+    it('blocks <picture><source srcset> (pictureSource)', () => {
+      const source = el('<source srcset="https://tracker.example/pic.webp" type="image/webp">');
+      expect(blockExternalResourcesOnNode(source)).toBe(true);
+      expect(source.hasAttribute('srcset')).toBe(false);
+    });
+
+    it('blocks <source src> for media', () => {
+      const source = el('<source src="https://tracker.example/v.mp4">');
+      expect(blockExternalResourcesOnNode(source)).toBe(true);
+      expect(source.hasAttribute('src')).toBe(false);
+      expect(source.getAttribute('data-blocked-src')).toContain('tracker.example');
+    });
+
+    it('blocks <video poster> (videoPoster)', () => {
+      const video = el('<video poster="https://tracker.example/poster.jpg"></video>');
+      expect(blockExternalResourcesOnNode(video)).toBe(true);
+      expect(video.hasAttribute('poster')).toBe(false);
+      expect(video.getAttribute('data-blocked-poster')).toContain('tracker.example');
+    });
+
+    it('blocks video src', () => {
+      const video = el('<video src="https://tracker.example/v.mp4"></video>');
+      expect(blockExternalResourcesOnNode(video)).toBe(true);
+      expect(video.hasAttribute('src')).toBe(false);
+    });
+
+    it('blocks the legacy background attribute', () => {
+      // <td> is foster-parented out of <body>, so build it directly.
+      const td = document.createElement('td');
+      td.setAttribute('background', 'https://tracker.example/bg.png');
+      expect(blockExternalResourcesOnNode(td)).toBe(true);
+      expect(td.hasAttribute('background')).toBe(false);
+      expect(td.getAttribute('data-blocked-background')).toContain('tracker.example');
+    });
+
+    it('strips external inline style url() including CSS escapes (cssEscape)', () => {
+      const div = el('<div style="background:url(\\68ttps://tracker.example/p.png)">x</div>');
+      expect(blockExternalResourcesOnNode(div)).toBe(true);
+      expect(div.getAttribute('style')).not.toContain('tracker.example');
+      expect(div.getAttribute('data-blocked-style')).toContain('tracker.example');
+    });
+
+    it('does not block inline/local resources', () => {
+      const img = el('<img src="blob:http://localhost/inline">');
+      expect(blockExternalResourcesOnNode(img)).toBe(false);
+      expect(img.getAttribute('src')).toBe('blob:http://localhost/inline');
+
+      const dataImg = el('<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">');
+      expect(blockExternalResourcesOnNode(dataImg)).toBe(false);
+
+      const cidImg = el('<img src="cid:logo@example.com">');
+      expect(blockExternalResourcesOnNode(cidImg)).toBe(false);
+    });
+
+    it('works as a DOMPurify afterSanitizeAttributes hook across all vectors', () => {
+      const html = `
+        <img src="&#10;&#10;https://tracker.example/a.png">
+        <picture><source srcset="https://tracker.example/b.webp"><img src="https://tracker.example/c.png"></picture>
+        <div style="background:url(\\68ttps://tracker.example/d.png)">bg</div>
+      `;
+      DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+        blockExternalResourcesOnNode(node as Element);
+      });
+      const clean = DOMPurify.sanitize(html, EMAIL_SANITIZE_CONFIG);
+      DOMPurify.removeAllHooks();
+
+      const doc = parseHtmlSafely(clean);
+      // No live src/srcset/style references the tracker anymore.
+      doc.querySelectorAll('img, source').forEach((node) => {
+        expect(node.getAttribute('src') ?? '').not.toContain('tracker.example');
+        expect(node.getAttribute('srcset') ?? '').not.toContain('tracker.example');
+      });
+      expect(doc.querySelector('div')?.getAttribute('style') ?? '').not.toContain('tracker.example');
+      // The originals are stashed for the banner/affordance.
+      expect(clean).toContain('data-blocked-src');
+      expect(clean).toContain('data-blocked-srcset');
+      expect(clean).toContain('data-blocked-style');
+    });
+  });
+
+  describe('Email Privacy Tester exact payloads (iframe render path)', () => {
+    function render(html: string): string {
+      DOMPurify.addHook('afterSanitizeAttributes', (node) =>
+        blockExternalResourcesOnNode(node as Element)
+      );
+      const out = DOMPurify.sanitize(html, EMAIL_IFRAME_SANITIZE_CONFIG);
+      DOMPurify.removeAllHooks();
+      return out;
+    }
+
+    it('pictureSource: <picture><source srcset> does not keep a live external ref', () => {
+      const source = parseHtmlSafely(render('<picture><source srcset="http://TRACK/"><img src="#"></picture>')).querySelector('source')!;
+      expect(source.hasAttribute('srcset')).toBe(false);
+      expect(source.getAttribute('data-blocked-srcset')).toContain('TRACK');
+    });
+
+    it('imgNewlineSrc: newline after the first slash (protocol-relative) is blocked', () => {
+      const img = parseHtmlSafely(render('<img src="/\n/TRACK_HOST/PATH">')).querySelector('img')!;
+      expect(img.getAttribute('src')).toBe(TRANSPARENT_BLOCKED_PIXEL);
+      expect(img.getAttribute('data-blocked-src')).toContain('TRACK_HOST');
+    });
+
+    it('videoPoster: poster and src are both stripped', () => {
+      const video = parseHtmlSafely(render('<video poster="http://TRACK/" autoplay="true" src="http://OTHER/"></video>')).querySelector('video')!;
+      expect(video.hasAttribute('poster')).toBe(false);
+      expect(video.hasAttribute('src')).toBe(false);
+      expect(video.getAttribute('data-blocked-poster')).toContain('TRACK');
+      expect(video.getAttribute('data-blocked-src')).toContain('OTHER');
+    });
+
+    it('anchor href is preserved (links stay clickable; DNS prefetch is disabled via iframe meta)', () => {
+      const out = render('<a href="http://TRACK/">link</a>');
+      expect(out).toContain('href="http://TRACK/"');
     });
   });
 

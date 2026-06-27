@@ -141,6 +141,161 @@ export function sanitizePlainTextRenderedHtml(html: string): string {
 }
 
 /**
+ * 1x1 transparent SVG used to replace a blocked external <img> so the layout
+ * doesn't reflow to a broken-image icon. The real URL is stashed in
+ * `data-blocked-src` for restore.
+ */
+export const TRANSPARENT_BLOCKED_PIXEL =
+  'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB2aWV3Qm94PSIwIDAgMSAxIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSJ0cmFuc3BhcmVudCIvPgo8L3N2Zz4=';
+
+/**
+ * True if a resource URL would trigger an external (network) fetch once the
+ * browser normalizes it. The URL parser removes ASCII tab/newline characters
+ * anywhere in the string and trims leading/trailing C0-control + space before
+ * resolving, so `"\n\nhttps://t"` and `"h\ttps://t"` are both external even
+ * though they don't literally start with "https://" (the `imgNewlineSrc`
+ * tracking bypass). Protocol-relative `//host` is external too. data:, blob:,
+ * and cid: are inline/local and never count as external.
+ */
+export function isExternalResourceUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  // Mirror the URL parser: drop every ASCII C0-control and space char it
+  // ignores (leading/trailing trim plus tab/newline/CR removed anywhere).
+  // eslint-disable-next-line no-control-regex
+  const normalized = value.replace(/[\u0000-\u0020]+/g, '');
+  return /^(?:https?:\/\/|\/\/)/i.test(normalized);
+}
+
+
+/**
+ * Decode CSS escape sequences so escaped tracking URLs can be recognised.
+ * `\68ttp://x` and `\000068ttp://x` both decode to `http://x` (the `cssEscape`
+ * bypass). Handles the two CSS escape forms: 1-6 hex digits (optionally
+ * followed by one whitespace) and a backslash before any other character.
+ */
+export function decodeCssEscapes(value: string): string {
+  return value.replace(/\\([0-9a-fA-F]{1,6})\s?|\\(.)/g, (_full, hex, char) => {
+    if (hex) {
+      const code = parseInt(hex, 16);
+      return code ? String.fromCodePoint(code) : '';
+    }
+    return char ?? '';
+  });
+}
+
+const CSS_URL_PATTERN = /url\(\s*(['"]?)([^)]*?)\1\s*\)/gi;
+
+/** True if any `url(...)` in a CSS string resolves to an external resource. */
+export function styleHasExternalUrl(style: string): boolean {
+  let found = false;
+  style.replace(CSS_URL_PATTERN, (full, _q, inner) => {
+    if (isExternalResourceUrl(decodeCssEscapes(inner))) found = true;
+    return full;
+  });
+  return found;
+}
+
+/** Replace every external `url(...)` in a CSS string with an empty `url()`. */
+export function stripExternalCssUrls(style: string): string {
+  return style.replace(CSS_URL_PATTERN, (full, _q, inner) =>
+    isExternalResourceUrl(decodeCssEscapes(inner)) ? 'url()' : full
+  );
+}
+
+/** True if a srcset attribute lists at least one external candidate URL. */
+function srcsetHasExternalUrl(srcset: string): boolean {
+  return srcset
+    .split(',')
+    .some((candidate) => isExternalResourceUrl(candidate.trim().split(/\s+/)[0]));
+}
+
+/**
+ * Neutralise every external-resource vector on a single sanitized element,
+ * stashing the original value in a `data-blocked-*` attribute for later
+ * restore. Covers the vectors Email Privacy Tester exercises beyond a bare
+ * `<img src>`: whitespace/newline in src, `<picture><source srcset>`,
+ * `<video poster>`/media src, the legacy `background` attribute, and inline
+ * `style` url() (including CSS-escaped URLs).
+ *
+ * This is the first line of defence (it drives the "external content blocked"
+ * banner and placeholder swap); the iframe's strict img-src/media-src/font-src
+ * CSP is the guaranteed network-level backstop for anything expressed in ways
+ * the DOM walk can't see (e.g. `<style>`-tag rules).
+ *
+ * @returns true if anything on the node was blocked.
+ */
+export function blockExternalResourcesOnNode(node: Element): boolean {
+  let blocked = false;
+  const tag = node.tagName;
+
+  if (tag === 'IMG') {
+    const src = node.getAttribute('src');
+    if (isExternalResourceUrl(src)) {
+      node.setAttribute('data-blocked-src', src!.trim());
+      node.setAttribute('src', TRANSPARENT_BLOCKED_PIXEL);
+      node.setAttribute('alt', '');
+      (node as HTMLElement).style.display = 'none';
+      blocked = true;
+    }
+  }
+
+  // Responsive images: <img srcset> and <picture><source srcset>.
+  if (tag === 'IMG' || tag === 'SOURCE') {
+    const srcset = node.getAttribute('srcset');
+    if (srcset && srcsetHasExternalUrl(srcset)) {
+      node.setAttribute('data-blocked-srcset', srcset);
+      node.removeAttribute('srcset');
+      blocked = true;
+    }
+  }
+
+  // <source src> for <video>/<audio> (and rare <picture> src).
+  if (tag === 'SOURCE') {
+    const src = node.getAttribute('src');
+    if (isExternalResourceUrl(src)) {
+      node.setAttribute('data-blocked-src', src!.trim());
+      node.removeAttribute('src');
+      blocked = true;
+    }
+  }
+
+  // <video poster> and direct <video>/<audio> src.
+  if (tag === 'VIDEO' || tag === 'AUDIO') {
+    const poster = node.getAttribute('poster');
+    if (isExternalResourceUrl(poster)) {
+      node.setAttribute('data-blocked-poster', poster!.trim());
+      node.removeAttribute('poster');
+      blocked = true;
+    }
+    const src = node.getAttribute('src');
+    if (isExternalResourceUrl(src)) {
+      node.setAttribute('data-blocked-src', src!.trim());
+      node.removeAttribute('src');
+      blocked = true;
+    }
+  }
+
+  // Legacy table/cell background attribute.
+  const bgAttr = node.getAttribute('background');
+  if (isExternalResourceUrl(bgAttr)) {
+    node.setAttribute('data-blocked-background', bgAttr!.trim());
+    node.removeAttribute('background');
+    blocked = true;
+  }
+
+  // Inline style url() — read the raw attribute so CSS escapes survive for
+  // decoding, then strip only the external urls.
+  const styleAttr = node.getAttribute('style');
+  if (styleAttr && styleHasExternalUrl(styleAttr)) {
+    node.setAttribute('data-blocked-style', styleAttr);
+    node.setAttribute('style', stripExternalCssUrls(styleAttr));
+    blocked = true;
+  }
+
+  return blocked;
+}
+
+/**
  * Safe HTML parsing without execution
  * Use instead of innerHTML for detection/parsing
  */

@@ -14,10 +14,11 @@ import { debug } from "@/lib/debug";
 import { toast } from "@/stores/toast-store";
 import { useContextMenu } from "@/hooks/use-context-menu";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
-import { sanitizeSignatureHtml, sanitizeEmailHtml } from "@/lib/email-sanitization";
+import { sanitizeSignatureHtml, sanitizeEmailHtml, escapeHtml } from "@/lib/email-sanitization";
 import { buildReplySubject, buildForwardSubject } from "@/lib/subject-prefix";
 import { isFilePreviewable } from "@/lib/file-preview";
 import { buildQuotedHtmlBlock, serializeEditorContent } from "@/components/email/quoted-html";
+import { buildSignatureBlock } from "@/components/email/signature-block";
 import { emailHooks, contactHooks } from "@/lib/plugin-hooks";
 import type { OutgoingEmail, RecipientSuggestion } from "@/lib/plugin-types";
 import { useAuthStore } from "@/stores/auth-store";
@@ -194,11 +195,13 @@ type SignatureIdentityLike = {
   textSignature?: string;
 } | null | undefined;
 
-// Render the embedded signature for "above quote" mode. Bracketed with
-// `data-signature-block` marker paragraphs so we can swap the inner content
-// when the user switches identity without losing the surrounding draft or
-// quoted message. The markers are preserved through TipTap by the
-// StyledParagraph extension.
+// Render the embedded signature. Bracketed with `data-signature-block` marker
+// paragraphs so we can swap the inner content when the user switches identity
+// without losing the surrounding draft or quoted message. The markers are
+// preserved through TipTap by the StyledParagraph extension. The HTML
+// signature itself is wrapped in a SignatureBlock atom node so its inline
+// styling survives the editor (see signature-block.ts) instead of being
+// flattened by the schema.
 function buildEmbeddedSignatureHtml(
   identity: SignatureIdentityLike,
   options: { embed: boolean; separator: boolean }
@@ -209,7 +212,7 @@ function buildEmbeddedSignatureHtml(
     : `<p data-signature-block="start"></p>`;
   const endMarker = `<p data-signature-block="end"></p>`;
   if (identity?.htmlSignature) {
-    return `${startMarker}${sanitizeSignatureHtml(identity.htmlSignature)}${endMarker}`;
+    return `${startMarker}${buildSignatureBlock(sanitizeSignatureHtml(identity.htmlSignature))}${endMarker}`;
   }
   if (identity?.textSignature) {
     const escaped = identity.textSignature
@@ -350,9 +353,8 @@ export function EmailComposer({
 
       const date = replyTo.receivedAt ? formatDateTime(replyTo.receivedAt, timeFormat, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : "";
       const from = replyTo.from?.[0];
-      const fromStr = from ? `${from.name || from.email}` : tCommon('unknown');
-      // Forward "From:" shows the full sender incl. address; reply line keeps
-      // the bare name (reads naturally in the localized "On … wrote:" line).
+      // Forward "From:" and the reply "On … wrote:" line both show the full
+      // sender incl. address ("Name <email>"), like Gmail/Outlook (#482).
       const fromStrFull = from
         ? (from.name && from.email && from.name !== from.email
             ? `${from.name} <${from.email}>`
@@ -380,7 +382,7 @@ export function EmailComposer({
       if (mode === 'forward') {
         return `${prefix}${signatureBlock}\n\n${tQuote('forwarded_separator')}\n${tQuote('from_label')}: ${fromStrFull}\n${tQuote('date_label')}: ${date}\n${tQuote('subject_label')}: ${replyTo.subject || ''}\n\n${originalText}`;
       } else if (mode === 'reply' || mode === 'replyAll') {
-        return `${prefix}${signatureBlock}\n\n${tQuote('reply_line', { date, from: fromStr })}\n${quotedText}`;
+        return `${prefix}${signatureBlock}\n\n${tQuote('reply_line', { date, from: fromStrFull })}\n${quotedText}`;
       }
       return prefix;
     }
@@ -402,7 +404,7 @@ export function EmailComposer({
 
     const date = replyTo.receivedAt ? formatDateTime(replyTo.receivedAt, timeFormat, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : "";
     const from = replyTo.from?.[0];
-    const fromStr = from ? `${from.name || from.email}` : tCommon('unknown');
+    // Forward and reply quote lines both show the full "Name <email>" sender (#482).
     const fromStrFull = from
       ? (from.name && from.email && from.name !== from.email
           ? `${from.name} <${from.email}>`
@@ -437,9 +439,11 @@ export function EmailComposer({
 
     // Build quoted content as HTML
     if (replyTo.htmlBody && (mode === 'reply' || mode === 'replyAll' || mode === 'forward')) {
+      // HTML-escape user-controlled values: an unescaped sender "Name <email>"
+      // has its "<email>" eaten as a bogus HTML tag by the rich-text editor (#482).
       const quoteHeader = mode === 'forward'
-        ? `${tQuote('forwarded_separator')}<br>${tQuote('from_label')}: ${fromStrFull}<br>${tQuote('date_label')}: ${date}<br>${tQuote('subject_label')}: ${replyTo.subject || ''}<br><br>`
-        : `${tQuote('reply_line', { date, from: fromStr })}<br>`;
+        ? `${tQuote('forwarded_separator')}<br>${tQuote('from_label')}: ${escapeHtml(fromStrFull)}<br>${tQuote('date_label')}: ${escapeHtml(date)}<br>${tQuote('subject_label')}: ${escapeHtml(replyTo.subject || '')}<br><br>`
+        : `${tQuote('reply_line', { date: escapeHtml(date), from: escapeHtml(fromStrFull) })}<br>`;
       // Embed the original as a QuotedHtml island (verbatim, schema-free) so
       // its layout survives the editor round-trip. Sanitize first to strip
       // scripts/styles/head; cid rewrite afterwards so data-cid markers
@@ -453,9 +457,9 @@ export function EmailComposer({
     if (replyTo.body) {
       const escapedOriginal = replyTo.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
       if (mode === 'forward') {
-        return `${prefix}${signatureBlock}<br><br>${tQuote('forwarded_separator')}<br>${tQuote('from_label')}: ${fromStrFull}<br>${tQuote('date_label')}: ${date}<br>${tQuote('subject_label')}: ${replyTo.subject || ''}<br><br>${escapedOriginal}`;
+        return `${prefix}${signatureBlock}<br><br>${tQuote('forwarded_separator')}<br>${tQuote('from_label')}: ${escapeHtml(fromStrFull)}<br>${tQuote('date_label')}: ${escapeHtml(date)}<br>${tQuote('subject_label')}: ${escapeHtml(replyTo.subject || '')}<br><br>${escapedOriginal}`;
       } else if (mode === 'reply' || mode === 'replyAll') {
-        return `${prefix}${signatureBlock}<br><br>${tQuote('reply_line', { date, from: fromStr })}<br><blockquote style="margin:0 0 0 0.8ex;border-left:2px solid #ccc;padding-left:1ex">${escapedOriginal}</blockquote>`;
+        return `${prefix}${signatureBlock}<br><br>${tQuote('reply_line', { date: escapeHtml(date), from: escapeHtml(fromStrFull) })}<br><blockquote style="margin:0 0 0 0.8ex;border-left:2px solid #ccc;padding-left:1ex">${escapedOriginal}</blockquote>`;
       }
     }
     return prefix;
@@ -1496,7 +1500,16 @@ export function EmailComposer({
     };
   };
 
+  // Guard against double-submit. Rapid Send clicks (or a click racing the
+  // keyboard shortcut) used to invoke handleSend once per click before the
+  // first submission resolved, sending the message multiple times. The ref is
+  // a synchronous re-entry guard - state updates are async and wouldn't block a
+  // second click in the same tick - and isSending drives button disabling.
+  const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
+
   const handleSend = async (skipAttachmentCheck = false, delayedUntil?: string) => {
+    if (isSendingRef.current) return;
     const ccAddresses = withInput(cc, ccInput);
     const bccAddresses = withInput(bcc, bccInput);
     // BEGIN AURION
@@ -1539,6 +1552,11 @@ Object.entries(keyCache).forEach(([email, val]) => {
         }
       }
     }
+
+    // Past every "don't send" early return - mark the send in flight so a
+    // second click is a no-op until this resolves (reset in the finally below).
+    isSendingRef.current = true;
+    setIsSending(true);
 
     // Resolve the freshest draftId we can. Two cases:
     //   1. An autosave is currently in flight - wait for it; don't issue a
@@ -1871,6 +1889,9 @@ Object.entries(keyCache).forEach(([email, val]) => {
     } catch (err) {
       debug.error('Failed to send email:', err);
       toast.error(err instanceof Error ? err.message : t('send_failed'));
+    } finally {
+      isSendingRef.current = false;
+      setIsSending(false);
     }
   };
 
@@ -2095,7 +2116,7 @@ const isPartiallyEncrypted = totalRecipients > 0 && encryptedCount > 0 && encryp
         {/* Mobile: send button in header */}
         <Button
           onClick={() => handleSend()}
-          disabled={!canSend}
+          disabled={!canSend || isSending}
           title={getSendTooltip()}
           size="sm"
           className="md:hidden h-9 px-4"
@@ -2635,7 +2656,7 @@ const isPartiallyEncrypted = totalRecipients > 0 && encryptedCount > 0 && encryp
               <div ref={sendMenuRef} className="relative hidden md:inline-flex">
                 <Button
                   onClick={() => handleSend()}
-                  disabled={!canSend}
+                  disabled={!canSend || isSending}
                   title={getSendTooltip()}
                   className="rounded-r-none border-r border-primary-foreground/20"
                 >
@@ -2645,7 +2666,7 @@ const isPartiallyEncrypted = totalRecipients > 0 && encryptedCount > 0 && encryp
                 <Button
                   type="button"
                   onClick={() => setShowSendMenu((open) => !open)}
-                  disabled={!canSend}
+                  disabled={!canSend || isSending}
                   title={t('schedule_send')}
                   className="rounded-l-none px-2"
                   aria-haspopup="menu"
@@ -2673,7 +2694,7 @@ const isPartiallyEncrypted = totalRecipients > 0 && encryptedCount > 0 && encryp
             ) : (
               <Button
                 onClick={() => handleSend()}
-                disabled={!canSend}
+                disabled={!canSend || isSending}
                 title={getSendTooltip()}
                 className="hidden md:inline-flex"
               >
@@ -2736,7 +2757,7 @@ const isPartiallyEncrypted = totalRecipients > 0 && encryptedCount > 0 && encryp
             {scheduleError && <p className="mt-2 text-sm text-destructive">{scheduleError}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowScheduleDialog(false)}>{tCommon('cancel')}</Button>
-              <Button onClick={handleScheduleSend} disabled={!canSend}>{t('schedule_send')}</Button>
+              <Button onClick={handleScheduleSend} disabled={!canSend || isSending}>{t('schedule_send')}</Button>
             </div>
           </div>
         </div>

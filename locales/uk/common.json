@@ -134,7 +134,10 @@
     "nav_label": "Навігація",
     "add_app": "програми",
     "shared": "Спільні",
-    "scheduled": "Заплановано"
+    "scheduled": "Заплановано",
+    "unified_all_unread": "Усі непрочитані",
+    "unified_all_starred": "Усі позначені",
+    "unified_all_mail": "Уся пошта"
   },
   "protocol_handlers": {
     "title": "Програми за замовчуванням",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Додати до контактів",
       "copied": "Скопійовано!",
       "copy_failed": "Не вдалося скопіювати"
-    }
+    },
+    "send_now": "Надіслати зараз"
   },
   "email_composer": {
     "read_receipt_on": "Запитано сповіщення про прочитання (натисніть, щоб вимкнути)",
@@ -801,7 +805,10 @@
     "uk": "Українська",
     "zh": "简体中文",
     "polish": "Polski",
-    "switch_to_polish": "Перемкнути на польську"
+    "switch_to_polish": "Перемкнути на польську",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Перейти на фарсі"
   },
   "settings": {
     "title": "Налаштування",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Розкладка для досвідчених користувачів лише для настільного комп'ютера з переглядом повідомлень у кількох вкладках і робочими процесами між обліковими записами. Стандартний інтерфейс не змінюється; ви можете повернутися будь-коли.",
         "open_label": "Відкрити Pro-інтерфейс",
         "back_to_standard": "Назад до стандарту"
+      },
+      "cross_unread": {
+        "label": "Усі облікові записи: Непрочитані",
+        "description": "Показує у розділі «Усі облікові записи» запис із непрочитаними листами з усіх облікових записів, по всіх теках, окрім спаму, надісланих, архіву, кошика та чернеток."
+      },
+      "cross_starred": {
+        "label": "Усі облікові записи: Позначені",
+        "description": "Показує у розділі «Усі облікові записи» запис із позначеними листами з усіх облікових записів, по всіх теках, окрім спаму, надісланих, архіву, кошика та чернеток."
+      },
+      "cross_all": {
+        "label": "Усі облікові записи: Уся пошта",
+        "description": "Показує у розділі «Усі облікові записи» запис з усіма листами з усіх облікових записів, по всіх теках, окрім спаму, надісланих, архіву, кошика та чернеток."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Архів",
         "tag": "Тег",
         "spam": "Позначити як спам",
+        "not_spam": "Не спам",
         "none_selected": "Дії не вибрано",
         "mode_label": "Режим відображення",
         "mode_inline": "Вбудований",
@@ -1226,6 +1247,10 @@
         "off": "Вимкнено",
         "seconds": "{seconds} с",
         "unsupported": "Поточний обліковий запис не повідомляє про підтримку відкладеного надсилання. Налаштування залишиться збереженим для інших облікових записів."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Спільний доступ"
     },
     "address_books": {
+      "create": "Нова адресна книга",
+      "created": "Адресну книгу створено",
+      "create_failed": "Не вдалося створити адресну книгу",
       "title": "Мої адресні книги",
       "shared_prefix": "Спільно: {name}",
       "moved": "Контакт переміщено до {name}",

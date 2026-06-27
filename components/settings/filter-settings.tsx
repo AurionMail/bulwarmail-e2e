@@ -160,6 +160,7 @@ export function FilterSettings() {
   const tNotifications = useTranslations("notifications");
   const { client } = useAuthStore();
   const storeMailboxes = useEmailStore((s) => s.mailboxes);
+  const fetchMailboxes = useEmailStore((s) => s.fetchMailboxes);
   const expandedFilterView = useSettingsStore((s) => s.expandedFilterView);
   const updateSetting = useSettingsStore((s) => s.updateSetting);
 
@@ -211,6 +212,22 @@ export function FilterSettings() {
       });
     return () => { cancelled = true; };
   }, [client, managedAccountId]);
+
+  // The "move to" folder list for the primary account comes from the email
+  // store, which is normally populated when the mail view mounts. When the app
+  // is opened or refreshed directly on Settings (the mail view never mounted),
+  // that store is empty, leaving the rule editor's folder dropdown blank. Fetch
+  // mailboxes on demand here so Filters never depends on having visited Inbox
+  // first. fetchMailboxes guards against transient empty results and selecting
+  // an inbox, so it's safe to call independently; a ref keeps it to one attempt
+  // per client.
+  const primaryFetchClientRef = useRef<typeof client | null>(null);
+  useEffect(() => {
+    if (managedAccountId || !client || storeMailboxes.length > 0) return;
+    if (primaryFetchClientRef.current === client) return;
+    primaryFetchClientRef.current = client;
+    void fetchMailboxes(client);
+  }, [client, managedAccountId, storeMailboxes.length, fetchMailboxes]);
 
   const mailboxes = managedAccountId ? scopedMailboxes : storeMailboxes;
 

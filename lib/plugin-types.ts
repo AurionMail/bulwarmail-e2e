@@ -260,6 +260,7 @@ export type SlotName =
   | 'composer-sidebar-right'
   | 'sidebar-widget'
   | 'email-detail-sidebar'
+  | 'email-details-section'
   | 'settings-section'
   | 'context-menu-email'
   | 'navigation-rail-bottom'
@@ -378,6 +379,19 @@ export interface EmailReadView {
    *  text). Empty string when the host hasn't loaded the body. Same
    *  `email:read` sensitivity as the rest of this view. */
   text: string;
+  /**
+   * Raw parsed header map (header name → value, or values when a header
+   * appears more than once), exactly as JMAP returned it. Absent until the
+   * host has loaded the message's headers. Same `email:read` sensitivity as
+   * the rest of this view.
+   */
+  headers?: Record<string, string | string[]>;
+  /**
+   * Full, human-readable message source — headers, metadata and body — the
+   * same text the "View source" dialog shows. Empty string when the body
+   * hasn't been fetched. Gated by `email:read` like the rest of this view.
+   */
+  source: string;
   /**
    * Parsed Authentication-Results header (SPF, DKIM, DMARC, reverse-DNS).
    * Absent on stores that didn't parse the header (e.g. bodies not yet
@@ -852,6 +866,7 @@ export const ALL_PERMISSIONS = [
   'auth:observe',
   'http:post', 'http:fetch',
   'ui:observe', 'ui:toolbar', 'ui:app-top-banner', 'ui:email-banner', 'ui:email-footer',
+  'ui:email-details',
   'ui:composer-toolbar', 'ui:composer-sidebar',
   'ui:sidebar-widget', 'ui:settings-section',
   'ui:context-menu', 'ui:navigation-rail', 'ui:keyboard',

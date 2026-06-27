@@ -134,7 +134,10 @@
     "nav_label": "Navegación",
     "add_app": "Apps",
     "shared": "Compartido",
-    "scheduled": "Programados"
+    "scheduled": "Programados",
+    "unified_all_unread": "Todo no leído",
+    "unified_all_starred": "Todo destacado",
+    "unified_all_mail": "Todo el correo"
   },
   "protocol_handlers": {
     "title": "Aplicaciones predeterminadas",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Añadir a contactos",
       "copied": "¡Copiado!",
       "copy_failed": "Error al copiar"
-    }
+    },
+    "send_now": "Enviar ahora"
   },
   "email_composer": {
     "read_receipt_on": "Confirmación de lectura solicitada (haz clic para desactivar)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Cambiar a farsi"
   },
   "settings": {
     "title": "Configuración",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Diseño de escritorio para usuarios avanzados con exploración de mensajes en varias pestañas y flujos de trabajo entre cuentas. La interfaz estándar no se ve afectada; puedes volver en cualquier momento.",
         "open_label": "Abrir interfaz Pro",
         "back_to_standard": "Volver al estándar"
+      },
+      "cross_unread": {
+        "label": "Todas las cuentas: No leído",
+        "description": "Muestra una entrada en la sección Todas las cuentas con el correo no leído de todas las cuentas, abarcando todas las carpetas excepto spam, enviados, archivo, papelera y borradores."
+      },
+      "cross_starred": {
+        "label": "Todas las cuentas: Destacado",
+        "description": "Muestra una entrada en la sección Todas las cuentas con el correo destacado de todas las cuentas, abarcando todas las carpetas excepto spam, enviados, archivo, papelera y borradores."
+      },
+      "cross_all": {
+        "label": "Todas las cuentas: Todo el correo",
+        "description": "Muestra una entrada en la sección Todas las cuentas con todo el correo de todas las cuentas, abarcando todas las carpetas excepto spam, enviados, archivo, papelera y borradores."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Archivar",
         "tag": "Etiqueta",
         "spam": "Marcar como spam",
+        "not_spam": "No es spam",
         "none_selected": "No hay acciones seleccionadas",
         "mode_label": "Modo de visualización",
         "mode_inline": "En línea",
@@ -1226,6 +1247,10 @@
         "off": "Desactivado",
         "seconds": "{seconds} segundos",
         "unsupported": "La cuenta actual no anuncia compatibilidad con envío demorado. La opción seguirá guardada para otras cuentas."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Compartidos"
     },
     "address_books": {
+      "create": "Nueva libreta de direcciones",
+      "created": "Libreta de direcciones creada",
+      "create_failed": "No se pudo crear la libreta de direcciones",
       "title": "Mis Libretas de Direcciones",
       "shared_prefix": "Compartido: {name}",
       "moved": "Contacto movido a {name}",

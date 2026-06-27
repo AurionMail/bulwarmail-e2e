@@ -134,7 +134,10 @@
     "nav_label": "Navigazione",
     "add_app": "App",
     "shared": "Condiviso",
-    "scheduled": "Programmate"
+    "scheduled": "Programmate",
+    "unified_all_unread": "Tutti i non letti",
+    "unified_all_starred": "Tutti gli speciali",
+    "unified_all_mail": "Tutta la posta"
   },
   "protocol_handlers": {
     "title": "App predefinite",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Aggiungi ai contatti",
       "copied": "Copiato!",
       "copy_failed": "Copia non riuscita"
-    }
+    },
+    "send_now": "Invia ora"
   },
   "email_composer": {
     "read_receipt_on": "Conferma di lettura richiesta (clicca per disattivare)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Passa al persiano"
   },
   "settings": {
     "title": "Impostazioni",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Layout per utenti esperti solo desktop con esplorazione messaggi a più schede e flussi tra account. L'interfaccia standard non è influenzata; puoi tornare indietro in qualsiasi momento.",
         "open_label": "Apri interfaccia Pro",
         "back_to_standard": "Torna allo standard"
+      },
+      "cross_unread": {
+        "label": "Tutti gli account: Non letti",
+        "description": "Mostra una voce nella sezione Tutti gli account che elenca la posta non letta di tutti gli account, in tutte le cartelle tranne posta indesiderata, inviata, archivio, cestino e bozze."
+      },
+      "cross_starred": {
+        "label": "Tutti gli account: Speciali",
+        "description": "Mostra una voce nella sezione Tutti gli account che elenca la posta speciale di tutti gli account, in tutte le cartelle tranne posta indesiderata, inviata, archivio, cestino e bozze."
+      },
+      "cross_all": {
+        "label": "Tutti gli account: Tutta la posta",
+        "description": "Mostra una voce nella sezione Tutti gli account che elenca tutta la posta di tutti gli account, in tutte le cartelle tranne posta indesiderata, inviata, archivio, cestino e bozze."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Archivia",
         "tag": "Etichetta",
         "spam": "Segna come spam",
+        "not_spam": "Non spam",
         "none_selected": "Nessuna azione selezionata",
         "mode_label": "Modalità di visualizzazione",
         "mode_inline": "In linea",
@@ -1226,6 +1247,10 @@
         "off": "Disattivato",
         "seconds": "{seconds} secondi",
         "unsupported": "L’account corrente non dichiara il supporto all’invio ritardato. L’impostazione resta salvata per altri account."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Condivisi"
     },
     "address_books": {
+      "create": "Nuova rubrica",
+      "created": "Rubrica creata",
+      "create_failed": "Impossibile creare la rubrica",
       "title": "Le mie Rubriche",
       "shared_prefix": "Condiviso: {name}",
       "moved": "Contatto spostato in {name}",

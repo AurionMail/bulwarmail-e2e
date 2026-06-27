@@ -134,7 +134,10 @@
     "nav_label": "导航",
     "add_app": "应用",
     "shared": "共享",
-    "scheduled": "已计划"
+    "scheduled": "已计划",
+    "unified_all_unread": "全部未读",
+    "unified_all_starred": "全部加星标",
+    "unified_all_mail": "全部邮件"
   },
   "protocol_handlers": {
     "title": "默认应用",
@@ -562,7 +565,8 @@
       "add_to_contacts": "添加到联系人",
       "copied": "已复制！",
       "copy_failed": "复制失败"
-    }
+    },
+    "send_now": "立即发送"
   },
   "email_composer": {
     "read_receipt_on": "已请求已读回执（点击以关闭）",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "切换到波斯语"
   },
   "settings": {
     "title": "设置",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "仅限桌面的高级用户布局，支持多标签消息浏览和跨账户工作流。标准界面不受影响，您可以随时切换回来。",
         "open_label": "打开 Pro 界面",
         "back_to_standard": "返回标准"
+      },
+      "cross_unread": {
+        "label": "所有账户：未读",
+        "description": "在“所有账户”部分显示一个条目，列出所有账户的未读邮件，涵盖除垃圾邮件、已发送、归档、废纸篓和草稿之外的所有文件夹。"
+      },
+      "cross_starred": {
+        "label": "所有账户：加星标",
+        "description": "在“所有账户”部分显示一个条目，列出所有账户的加星标邮件，涵盖除垃圾邮件、已发送、归档、废纸篓和草稿之外的所有文件夹。"
+      },
+      "cross_all": {
+        "label": "所有账户：全部邮件",
+        "description": "在“所有账户”部分显示一个条目，列出所有账户的全部邮件，涵盖除垃圾邮件、已发送、归档、废纸篓和草稿之外的所有文件夹。"
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "归档",
         "tag": "标签",
         "spam": "标记为垃圾邮件",
+        "not_spam": "非垃圾邮件",
         "none_selected": "未选择任何操作",
         "mode_label": "显示模式",
         "mode_inline": "内嵌",
@@ -1226,6 +1247,10 @@
         "off": "关闭",
         "seconds": "{seconds} 秒",
         "unsupported": "当前账户未声明支持延迟发送。该设置仍会为其他账户保存。"
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "共享"
     },
     "address_books": {
+      "create": "新建通讯录",
+      "created": "通讯录已创建",
+      "create_failed": "创建通讯录失败",
       "title": "我的地址簿",
       "shared_prefix": "共享：{name}",
       "moved": "联系人已移至 {name}",

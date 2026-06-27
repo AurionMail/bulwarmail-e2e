@@ -134,7 +134,10 @@
     "mail": "Pošta",
     "nav_label": "Navigace",
     "add_app": "Aplikace",
-    "scheduled": "Naplánováno"
+    "scheduled": "Naplánováno",
+    "unified_all_unread": "Vše nepřečtené",
+    "unified_all_starred": "Vše s hvězdičkou",
+    "unified_all_mail": "Veškerá pošta"
   },
   "protocol_handlers": {
     "title": "Výchozí aplikace",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Přidat do kontaktů",
       "copied": "Zkopírováno!",
       "copy_failed": "Kopírování se nezdařilo"
-    }
+    },
+    "send_now": "Odeslat nyní"
   },
   "email_composer": {
     "read_receipt_on": "Vyžádáno potvrzení o přečtení (kliknutím vypnete)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Přepnout na perštinu"
   },
   "settings": {
     "title": "Nastavení",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Rozložení pro pokročilé uživatele pouze pro stolní počítače s prohlížením zpráv na více kartách a pracovními postupy napříč účty. Standardní rozhraní zůstává nedotčeno; kdykoli se můžete vrátit.",
         "open_label": "Otevřít Pro rozhraní",
         "back_to_standard": "Zpět na standard"
+      },
+      "cross_unread": {
+        "label": "Všechny účty: Nepřečtené",
+        "description": "Zobrazí v sekci Všechny účty položku s nepřečtenou poštou ze všech účtů, napříč všemi složkami kromě spamu, odeslané, archivu, koše a konceptů."
+      },
+      "cross_starred": {
+        "label": "Všechny účty: S hvězdičkou",
+        "description": "Zobrazí v sekci Všechny účty položku s poštou s hvězdičkou ze všech účtů, napříč všemi složkami kromě spamu, odeslané, archivu, koše a konceptů."
+      },
+      "cross_all": {
+        "label": "Všechny účty: Veškerá pošta",
+        "description": "Zobrazí v sekci Všechny účty položku s veškerou poštou ze všech účtů, napříč všemi složkami kromě spamu, odeslané, archivu, koše a konceptů."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Archivovat",
         "tag": "Štítek",
         "spam": "Označit jako spam",
+        "not_spam": "Není spam",
         "none_selected": "Nebyly vybrány žádné akce",
         "mode_label": "Režim zobrazení",
         "mode_inline": "Vložené",
@@ -1226,6 +1247,10 @@
         "off": "Vypnuto",
         "seconds": "{seconds} sekund",
         "unsupported": "Aktuální účet neoznamuje podporu odloženého odeslání. Nastavení zůstane uloženo pro jiné účty."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Sdílené"
     },
     "address_books": {
+      "create": "Nový adresář",
+      "created": "Adresář vytvořen",
+      "create_failed": "Nepodařilo se vytvořit adresář",
       "title": "Moje adresáře",
       "shared_prefix": "Sdílené: {name}",
       "moved": "Kontakt přesunut do {name}",

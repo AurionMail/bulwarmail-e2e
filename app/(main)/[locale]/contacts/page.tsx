@@ -84,6 +84,7 @@ export default function ContactsPage() {
     bulkDeleteContacts,
     bulkAddToGroup,
     moveContactToAddressBook,
+    createAddressBook,
     renameAddressBook,
     removeAddressBook,
     shareAddressBook,
@@ -95,6 +96,7 @@ export default function ContactsPage() {
   const [activeCategory, setActiveCategory] = useState<ContactCategory>("all");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [renamingAddressBook, setRenamingAddressBook] = useState<AddressBook | null>(null);
+  const [creatingAddressBook, setCreatingAddressBook] = useState(false);
   const [sharingAddressBookId, setSharingAddressBookId] = useState<string | null>(null);
   const [defaultBookIdForCreate, setDefaultBookIdForCreate] = useState<string | undefined>(undefined);
   const [createPrefill, setCreatePrefill] = useState<{ email?: string; name?: string } | undefined>(undefined);
@@ -299,6 +301,34 @@ export default function ContactsPage() {
       toast.error(t("toast.error_update"));
     }
   }, [client, supportsSync, contacts, updateContact, updateLocalContact, t]);
+
+  // Refresh address books (and contacts) after a structural change, staying
+  // multi-account aware so a freshly created book lands in the sidebar.
+  const refreshAddressBooks = useCallback(async () => {
+    if (!client) return;
+    if (multiAccountEnabled && accountClients.length > 0) {
+      const activeId = useAuthStore.getState().activeAccountId;
+      if (activeId) {
+        const { fetchAllAccountsAddressBooks } = useContactStore.getState();
+        await fetchAllAccountsAddressBooks(accountClients, activeId);
+        return;
+      }
+    }
+    await useContactStore.getState().fetchAddressBooks(client);
+  }, [client, multiAccountEnabled, accountClients]);
+
+  const handleCreateAddressBook = useCallback(async (name: string) => {
+    if (!client) return;
+    try {
+      await createAddressBook(client, name);
+      await refreshAddressBooks();
+      toast.success(t("address_books.created"));
+      setCreatingAddressBook(false);
+    } catch (error) {
+      console.error('Failed to create address book:', error);
+      toast.error(t("address_books.create_failed"));
+    }
+  }, [client, createAddressBook, refreshAddressBooks, t]);
 
   const handleImportContacts = useCallback(async (importedContacts: ContactCard[]) => {
     return importContacts(
@@ -857,6 +887,7 @@ export default function ContactsPage() {
                       onSelectCategory={handleSelectCategory}
                       onCreateGroup={handleCreateGroup}
                       onCreateContact={handleCreateNew}
+                      onCreateAddressBook={client ? () => setCreatingAddressBook(true) : undefined}
                       onImport={() => setShowImportDialog(true)}
                       onEditGroup={handleEditGroupFromSidebar}
                       onDeleteGroup={handleDeleteGroupFromSidebar}
@@ -1004,6 +1035,15 @@ export default function ContactsPage() {
               toast.error(t("category_rename_failed"));
             }
           }}
+        />
+      )}
+      {creatingAddressBook && (
+        <RenameDialog
+          currentName=""
+          title={t("address_books.create")}
+          label={t("address_books.name_label")}
+          onCancel={() => setCreatingAddressBook(false)}
+          onConfirm={handleCreateAddressBook}
         />
       )}
       {renamingAddressBook && (

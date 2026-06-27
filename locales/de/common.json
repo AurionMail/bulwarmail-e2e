@@ -134,7 +134,10 @@
     "nav_label": "Navigation",
     "add_app": "Apps",
     "shared": "Geteilt",
-    "scheduled": "Geplant"
+    "scheduled": "Geplant",
+    "unified_all_unread": "Alle ungelesenen",
+    "unified_all_starred": "Alle markierten",
+    "unified_all_mail": "Alle Mails"
   },
   "protocol_handlers": {
     "title": "Standard-Apps",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Zu Kontakten hinzufügen",
       "copied": "Kopiert!",
       "copy_failed": "Kopieren fehlgeschlagen"
-    }
+    },
+    "send_now": "Jetzt senden"
   },
   "email_composer": {
     "read_receipt_on": "Lesebestätigung angefordert (klicken zum Deaktivieren)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Zu Farsi wechseln"
   },
   "settings": {
     "title": "Einstellungen",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Gilt für {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "Desktop-Power-User-Layout mit Multi-Tab-Nachrichtenansicht und kontoübergreifenden Workflows. Die Standardoberfläche bleibt unverändert; Sie können jederzeit zurückwechseln.",
         "open_label": "Pro-Oberfläche öffnen",
         "back_to_standard": "Zurück zum Standard"
+      },
+      "cross_unread": {
+        "label": "Alle Konten: Ungelesen",
+        "description": "Zeigt in der Sektion „All accounts“ einen Eintrag mit ungelesenen Mails über alle Konten, über alle Ordner außer Junk, Gesendet, Archiv, Papierkorb und Entwürfe."
+      },
+      "cross_starred": {
+        "label": "Alle Konten: Markiert",
+        "description": "Zeigt in der Sektion „All accounts“ einen Eintrag mit markierten Mails über alle Konten, über alle Ordner außer Junk, Gesendet, Archiv, Papierkorb und Entwürfe."
+      },
+      "cross_all": {
+        "label": "Alle Konten: Alle Mails",
+        "description": "Zeigt in der Sektion „All accounts“ einen Eintrag mit allen Mails über alle Konten, über alle Ordner außer Junk, Gesendet, Archiv, Papierkorb und Entwürfe."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "Archivieren",
         "tag": "Label",
         "spam": "Als Spam markieren",
+        "not_spam": "Kein Spam",
         "none_selected": "Keine Aktionen ausgewählt",
         "mode_label": "Anzeigemodus",
         "mode_inline": "Eingebettet",
@@ -1226,6 +1247,10 @@
         "off": "Aus",
         "seconds": "{seconds} Sekunden",
         "unsupported": "Das aktuelle Konto meldet keine Unterstützung für verzögertes Senden. Die Einstellung bleibt für andere Konten gespeichert."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "Geteilt"
     },
     "address_books": {
+      "create": "Neues Adressbuch",
+      "created": "Adressbuch erstellt",
+      "create_failed": "Adressbuch konnte nicht erstellt werden",
       "title": "Meine Adressbücher",
       "shared_prefix": "Geteilt: {name}",
       "moved": "Kontakt verschoben nach {name}",

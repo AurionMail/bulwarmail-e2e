@@ -3,9 +3,9 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import DOMPurify from "dompurify";
 import { Email, ContactCard, Mailbox } from "@/lib/jmap/types";
-import { emailExportFilename, attachmentDownloadFilename, DEFAULT_EMAIL_TEMPLATE, DEFAULT_ATTACHMENT_TEMPLATE } from "@/lib/download-filename";
+import { emailExportFilename, attachmentDownloadFilename, attachmentsBundleFilename, DEFAULT_EMAIL_TEMPLATE, DEFAULT_ATTACHMENT_TEMPLATE } from "@/lib/download-filename";
 import { EML_IMPORT_ACCEPT, expandImportableEmails } from "@/lib/eml-import";
-import { EMAIL_IFRAME_SANITIZE_CONFIG, collapseBlockedImageContainers, escapeHtml, plainTextToSafeHtml, sanitizeEmailHtml, sanitizePlainTextRenderedHtml } from "@/lib/email-sanitization";
+import { EMAIL_IFRAME_SANITIZE_CONFIG, blockExternalResourcesOnNode, collapseBlockedImageContainers, escapeHtml, plainTextToSafeHtml, sanitizeEmailHtml, sanitizePlainTextRenderedHtml } from "@/lib/email-sanitization";
 import { hasMeaningfulHtmlBody } from "@/lib/signature-utils";
 import { withBasePath } from "@/lib/browser-navigation";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { formatFileSize, cn, buildMailboxTree, MailboxNode, formatDateTime, generateUUID } from "@/lib/utils";
 import { getSecurityStatus, extractListHeaders } from "@/lib/email-headers";
 import { emailToReadView } from "@/lib/plugin-projection";
+import { generateEmailSource } from "@/lib/email-source";
 import {
   Reply,
   ReplyAll,
@@ -1004,6 +1005,7 @@ export function EmailViewer({
   const [showAllBesideAttachments, setShowAllBesideAttachments] = useState(false);
   const [showAllMobileAttachments, setShowAllMobileAttachments] = useState(false);
   const [showAllBelowHeaderAttachments, setShowAllBelowHeaderAttachments] = useState(false);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [visibleBelowHeaderCount, setVisibleBelowHeaderCount] = useState<number | null>(null);
   const belowHeaderRowRef = useRef<HTMLDivElement>(null);
   const belowHeaderGhostRef = useRef<HTMLDivElement>(null);
@@ -1052,6 +1054,9 @@ export function EmailViewer({
   // sessions so the panel reopens the way the user last left it.
   const detailSlots = usePluginSlotOffers('email-detail-sidebar');
   const hasDetailSidebar = detailSlots.length > 0;
+  // Whether any plugin offers a "more details" section, so we only render the
+  // bottom plugin category wrapper when something will fill it.
+  const hasDetailsSlotOffers = usePluginSlotOffers('email-details-section').length > 0;
   const [detailSidebarCollapsed, setDetailSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try { return localStorage.getItem('emailDetailSidebarCollapsed') === '1'; } catch { return false; }
@@ -2309,144 +2314,6 @@ export function EmailViewer({
   }, [effectiveAttachments, attachmentPosition, imageThumbUrls]);
 
   // Generate email source for viewing
-  const generateEmailSource = (email: Email): string => {
-    let source = '';
-
-    // Headers
-    source += '=== EMAIL HEADERS ===\n\n';
-    if (email.messageId) source += `Message-ID: ${email.messageId}\n`;
-    if (email.from) source += `From: ${email.from.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ')}\n`;
-    if (email.to) source += `To: ${email.to.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ')}\n`;
-    if (email.cc) source += `Cc: ${email.cc.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ')}\n`;
-    if (email.bcc) source += `Bcc: ${email.bcc.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ')}\n`;
-    if (email.replyTo) source += `Reply-To: ${email.replyTo.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ')}\n`;
-    if (email.subject) source += `Subject: ${email.subject}\n`;
-    if (email.sentAt) source += `Date: ${new Date(email.sentAt).toUTCString()}\n`;
-    if (email.receivedAt) source += `Received-At: ${new Date(email.receivedAt).toUTCString()}\n`;
-    if (email.inReplyTo) source += `In-Reply-To: ${email.inReplyTo.join(', ')}\n`;
-    if (email.references) source += `References: ${email.references.join(', ')}\n`;
-
-    // Additional headers
-    if (email.headers) {
-      source += '\n--- Additional Headers ---\n';
-      // Headers should now always be a Record after client processing
-      Object.entries(email.headers).forEach(([key, value]) => {
-        const val = Array.isArray(value) ? value.join('\n    ') : String(value);
-        source += `${key}: ${val}\n`;
-      });
-    }
-
-    // Authentication results
-    if (email.authenticationResults) {
-      source += '\n--- Authentication Results ---\n';
-      if (email.authenticationResults.spf) {
-        source += `SPF: ${email.authenticationResults.spf.result}`;
-        if (email.authenticationResults.spf.domain) source += ` (${email.authenticationResults.spf.domain})`;
-        source += '\n';
-      }
-      if (email.authenticationResults.dkim) {
-        source += `DKIM: ${email.authenticationResults.dkim.result}`;
-        if (email.authenticationResults.dkim.domain) source += ` (${email.authenticationResults.dkim.domain})`;
-        source += '\n';
-      }
-      if (email.authenticationResults.dmarc) {
-        source += `DMARC: ${email.authenticationResults.dmarc.result}`;
-        if (email.authenticationResults.dmarc.policy) source += ` policy=${email.authenticationResults.dmarc.policy}`;
-        source += '\n';
-      }
-    }
-
-    if (email.spamScore !== undefined) {
-      source += `Spam Score: ${email.spamScore}`;
-      if (email.spamStatus) source += ` (${email.spamStatus})`;
-      source += '\n';
-    }
-
-    // Metadata
-    source += '\n=== EMAIL METADATA ===\n\n';
-    source += `Email ID: ${email.id}\n`;
-    source += `Thread ID: ${email.threadId}\n`;
-    source += `Size: ${formatFileSize(email.size)}\n`;
-    source += `Has Attachment: ${email.hasAttachment ? 'Yes' : 'No'}\n`;
-    if (email.keywords) {
-      const keywords = Object.entries(email.keywords)
-        .filter(([_, v]) => v)
-        .map(([k]) => k)
-        .join(', ');
-      if (keywords) source += `Keywords: ${keywords}\n`;
-    }
-
-    // Attachments
-    if (email.attachments && email.attachments.length > 0) {
-      source += '\n=== ATTACHMENTS ===\n\n';
-      email.attachments.forEach((att, i) => {
-        source += `[${i + 1}] ${att.name || 'Unnamed'}\n`;
-        source += `    Type: ${att.type}\n`;
-        source += `    Size: ${formatFileSize(att.size)}\n`;
-        source += `    Blob ID: ${att.blobId}\n`;
-        if (att.cid) source += `    Content-ID: ${att.cid}\n`;
-        source += '\n';
-      });
-    }
-
-    // Body content
-    source += '\n=== EMAIL BODY ===\n\n';
-
-    let hasBodyContent = false;
-
-    // Text version
-    if (email.textBody?.[0]?.partId && email.bodyValues?.[email.textBody[0].partId]) {
-      const textValue = email.bodyValues[email.textBody[0].partId].value;
-      if (textValue && textValue.trim()) {
-        source += '--- Plain Text Version ---\n\n';
-        source += textValue;
-        source += '\n\n';
-        hasBodyContent = true;
-      }
-    }
-
-    // HTML version
-    if (email.htmlBody?.[0]?.partId && email.bodyValues?.[email.htmlBody[0].partId]) {
-      const htmlValue = email.bodyValues[email.htmlBody[0].partId].value;
-      if (htmlValue && htmlValue.trim()) {
-        source += '--- HTML Version ---\n\n';
-        source += htmlValue;
-        source += '\n\n';
-        hasBodyContent = true;
-      }
-    }
-
-    // All body values if we haven't found content yet
-    if (!hasBodyContent && email.bodyValues) {
-      const bodyKeys = Object.keys(email.bodyValues);
-      if (bodyKeys.length > 0) {
-        source += '--- Body Parts ---\n\n';
-        bodyKeys.forEach((key, index) => {
-          const bodyValue = email.bodyValues![key].value;
-          if (bodyValue && bodyValue.trim()) {
-            source += `Part ${index + 1} (${key}):\n`;
-            source += bodyValue;
-            source += '\n\n';
-            hasBodyContent = true;
-          }
-        });
-      }
-    }
-
-    // Preview if no body
-    if (!hasBodyContent && email.preview) {
-      source += '--- Preview Only ---\n\n';
-      source += email.preview;
-      source += '\n';
-    }
-
-    if (!hasBodyContent && !email.preview) {
-      source += '(No body content available)\n';
-    }
-
-    return source;
-  };
-
   const copySourceToClipboard = async () => {
     if (!email) return;
 
@@ -2462,7 +2329,7 @@ export function EmailViewer({
 
   // Sanitize and prepare email HTML content
   const emailContent = useMemo(() => {
-    if (!email) return { html: "", isHtml: false, hasStyleTag: false };
+    if (!email) return { html: "", isHtml: false, hasStyleTag: false, externalBlocked: false };
 
     // Check if we have body values
     if (email.bodyValues) {
@@ -2530,37 +2397,13 @@ export function EmailViewer({
         }
 
         DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-          const htmlNode = node as HTMLElement;
-
           if (shouldBlockExternal) {
-            if (node.tagName === 'IMG') {
-              const src = node.getAttribute('src');
-              if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//'))) {
-                node.setAttribute('data-blocked-src', src);
-                node.setAttribute('src', 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB2aWV3Qm94PSIwIDAgMSAxIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSJ0cmFuc3BhcmVudCIvPgo8L3N2Zz4=');
-                node.setAttribute('alt', '');
-                htmlNode.style.display = 'none';
-                blockedExternalContent = true;
-              }
-            }
-
-            const bgAttr = node.getAttribute?.('background');
-            if (bgAttr && (bgAttr.startsWith('http://') || bgAttr.startsWith('https://') || bgAttr.startsWith('//'))) {
-              node.setAttribute('data-blocked-background', bgAttr);
-              node.removeAttribute('background');
+            // Blocks every external-resource vector (img src incl.
+            // whitespace/newline tricks, srcset, <source>, <video poster>,
+            // media src, background attr, inline style url() incl. CSS
+            // escapes). The strict iframe CSP below is the network backstop.
+            if (blockExternalResourcesOnNode(node)) {
               blockedExternalContent = true;
-            }
-
-            if (htmlNode.style) {
-              const style = htmlNode.style.cssText;
-              if (style && style.includes('url(')) {
-                const urlMatch = style.match(/url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/gi);
-                if (urlMatch) {
-                  node.setAttribute('data-blocked-style', style);
-                  htmlNode.style.cssText = style.replace(/url\(['"]?https?:\/\/[^'")\s]+['"]?\)/gi, 'url()');
-                  blockedExternalContent = true;
-                }
-              }
             }
           }
 
@@ -2592,6 +2435,11 @@ export function EmailViewer({
           html: cleanHtml,
           isHtml: true,
           hasStyleTag: /<style[\s>]/i.test(htmlContent),
+          // Drives the strict iframe CSP: when we're in blocking mode the
+          // iframe forbids external img/media/font fetches entirely, so any
+          // vector the DOM walk above missed (e.g. <style>-tag url()) still
+          // can't phone home. Cleared once the user allows / trusts.
+          externalBlocked: shouldBlockExternal,
         };
       }
 
@@ -2603,6 +2451,7 @@ export function EmailViewer({
           html: plainTextToSafeHtml(textContent),
           isHtml: false,
           hasStyleTag: false,
+          externalBlocked: false,
         };
       }
     }
@@ -2618,6 +2467,7 @@ export function EmailViewer({
         html: `<div style="color: var(--color-muted-foreground); font-style: italic;">${previewHtml}</div>`,
         isHtml: false,
         hasStyleTag: false,
+        externalBlocked: false,
       };
     }
 
@@ -2625,12 +2475,16 @@ export function EmailViewer({
       html: `<p style="color: var(--color-muted-foreground); font-style: italic;">${t('no_body_content')}</p>`,
       isHtml: false,
       hasStyleTag: false,
+      externalBlocked: false,
     };
-    // Intentionally omit allowExternalContent and trust state from deps:
-    // toggling permission imperatively unblocks content via restoreBlockedContent
-    // in an effect below, so the iframe srcDoc stays stable and doesn't reload/flash.
+    // Recompute when permission changes so the srcDoc rebuilds with the
+    // unblocked content AND the permissive CSP. The strict blocking-mode CSP
+    // can't be relaxed in place (a document's CSP is fixed at load), so the
+    // "Load images" / "Trust sender" buttons (both flip allowExternalContent)
+    // intentionally trigger a fresh srcDoc. Trust selectors are read inside and
+    // re-read on that rebuild, so they're deliberately omitted from deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email, externalContentPolicy, cidBlobUrls, t]);
+  }, [email, externalContentPolicy, allowExternalContent, cidBlobUrls, t]);
 
   // Override email content with S/MIME decrypted content when available
   const effectiveEmailContent = useMemo(() => {
@@ -2642,26 +2496,26 @@ export function EmailViewer({
         }
       );
       const cleanHtml = DOMPurify.sanitize(htmlWithCidUrls, EMAIL_IFRAME_SANITIZE_CONFIG);
-      return { html: cleanHtml, isHtml: true, hasStyleTag: /<style[\s>]/i.test(smimeDecryptedHtml) };
+      return { html: cleanHtml, isHtml: true, hasStyleTag: /<style[\s>]/i.test(smimeDecryptedHtml), externalBlocked: false };
     }
     if (smimeDecryptedText) {
-      return { html: plainTextToSafeHtml(smimeDecryptedText), isHtml: false, hasStyleTag: false };
+      return { html: plainTextToSafeHtml(smimeDecryptedText), isHtml: false, hasStyleTag: false, externalBlocked: false };
     }
     // TNEF (winmail.dat) extracted content
     if (tnefHtml) {
       const cleanHtml = DOMPurify.sanitize(tnefHtml, EMAIL_IFRAME_SANITIZE_CONFIG);
-      return { html: cleanHtml, isHtml: true, hasStyleTag: /<style[\s>]/i.test(tnefHtml) };
+      return { html: cleanHtml, isHtml: true, hasStyleTag: /<style[\s>]/i.test(tnefHtml), externalBlocked: false };
     }
     if (tnefText) {
-      return { html: plainTextToSafeHtml(tnefText), isHtml: false, hasStyleTag: false };
+      return { html: plainTextToSafeHtml(tnefText), isHtml: false, hasStyleTag: false, externalBlocked: false };
     }
     // Embedded message/rfc822 unwrapped content
     if (embeddedEmailHtml) {
       const cleanHtml = DOMPurify.sanitize(embeddedEmailHtml, EMAIL_IFRAME_SANITIZE_CONFIG);
-      return { html: cleanHtml, isHtml: true, hasStyleTag: /<style[\s>]/i.test(embeddedEmailHtml) };
+      return { html: cleanHtml, isHtml: true, hasStyleTag: /<style[\s>]/i.test(embeddedEmailHtml), externalBlocked: false };
     }
     if (embeddedEmailText) {
-      return { html: plainTextToSafeHtml(embeddedEmailText), isHtml: false, hasStyleTag: false };
+      return { html: plainTextToSafeHtml(embeddedEmailText), isHtml: false, hasStyleTag: false, externalBlocked: false };
     }
     return emailContent;
   }, [cidBlobUrls, emailContent, smimeDecryptedHtml, smimeDecryptedText, tnefHtml, tnefText, embeddedEmailHtml, embeddedEmailText]);
@@ -2802,6 +2656,86 @@ export function EmailViewer({
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   }, [onDownloadAttachment, email?.id, resolveAttachmentName]);
 
+  // Bundle every attachment of this email into a single .zip and download it.
+  // Fetches blob-backed attachments through the JMAP client and reuses already
+  // decoded bytes for S/MIME-decrypted and TNEF-extracted ones. Individual
+  // failures are skipped so a single bad blob doesn't sink the whole archive.
+  const handleDownloadAllAttachments = useCallback(async () => {
+    if (isDownloadingAll || effectiveAttachments.length === 0) return;
+    setIsDownloadingAll(true);
+    try {
+      const { default: JSZip } = await import('jszip');
+      const zip = new JSZip();
+      const used = new Set<string>();
+      // Zip entries must be unique; suffix collisions with " (n)" before the
+      // extension so duplicates stay recognisable.
+      const uniqueName = (raw: string): string => {
+        const base = raw || 'attachment';
+        if (!used.has(base)) { used.add(base); return base; }
+        const dot = base.lastIndexOf('.');
+        const stem = dot > 0 ? base.slice(0, dot) : base;
+        const ext = dot > 0 ? base.slice(dot) : '';
+        let i = 1;
+        let candidate = `${stem} (${i})${ext}`;
+        while (used.has(candidate)) { i++; candidate = `${stem} (${i})${ext}`; }
+        used.add(candidate);
+        return candidate;
+      };
+
+      let added = 0;
+      for (const attachment of effectiveAttachments) {
+        const entryName = uniqueName(getAttachmentDisplayName(attachment.name, attachment.type));
+        try {
+          if (attachment.blobId && client) {
+            const blob = await client.fetchBlob(attachment.blobId, attachment.name || entryName, attachment.type);
+            zip.file(entryName, blob);
+            added++;
+          } else if (attachment.tnefData) {
+            zip.file(entryName, attachment.tnefData);
+            added++;
+          } else if (attachment.decryptedAttachment) {
+            const bytes = getAttachmentContentBytes(attachment.decryptedAttachment);
+            if (bytes && bytes.byteLength > 0) {
+              zip.file(entryName, bytes);
+              added++;
+            }
+          }
+        } catch {
+          // Skip individual failures; remaining attachments still bundle.
+        }
+      }
+
+      if (added === 0) return;
+
+      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+      const objectUrl = URL.createObjectURL(zipBlob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = attachmentsBundleFilename(email);
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  }, [isDownloadingAll, effectiveAttachments, client, email]);
+
+  // Shared "Download all" chip, shown only when bundling is worthwhile (2+).
+  const downloadAllButton = effectiveAttachments.length > 1 ? (
+    <button
+      onClick={(e) => { e.stopPropagation(); handleDownloadAllAttachments(); }}
+      disabled={isDownloadingAll}
+      title={t('download_all')}
+      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-md border border-border/50 transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-wait"
+    >
+      {isDownloadingAll
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        : <FileArchive className="w-3.5 h-3.5" />}
+      {t('download_all')}
+    </button>
+  ) : null;
+
   // Pre-fetch object URLs for image attachments so their actual contents can be
   // rendered as thumbnails inside the chip. Skips images larger than 10 MB.
   useEffect(() => {
@@ -2941,16 +2875,25 @@ export function EmailViewer({
       p.MsoNormal, li.MsoNormal, div.MsoNormal { margin: 0 0 6px; }
     ` : '';
 
-    // Defense-in-depth CSP inside srcDoc: even if the sanitizer ever lets a
-    // <script> tag through, the iframe document forbids script execution
-    // (default-src 'none'). img/style/font remain permissive to match what the
-    // sanitizer is allowed to emit and what the host already permits when
-    // external content is loaded.
-    const iframeCsp = "default-src 'none'; img-src data: blob: http: https:; style-src 'unsafe-inline'; font-src data: http: https:; media-src data: blob: http: https:; base-uri 'none'; form-action 'none'; frame-src 'none'";
+    // Defense-in-depth CSP inside srcDoc. default-src 'none' forbids script
+    // execution even if the sanitizer ever lets a <script> through.
+    //
+    // When external content is blocked, img/media/font are restricted to
+    // data:/blob: only — this is the network-level backstop for every tracking
+    // vector, including ones the DOM-walk blocker can't see (CSS escapes,
+    // <style>-tag url(), @font-face). When the user loads/trusts the sender the
+    // srcDoc is rebuilt (see emailContent) with the permissive variant so real
+    // images, web fonts and media load. cid:/inline images are pre-rewritten to
+    // blob: URLs, so they survive the strict variant.
+    const iframeCsp = effectiveEmailContent.externalBlocked
+      ? "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; media-src data: blob:; base-uri 'none'; form-action 'none'; frame-src 'none'"
+      : "default-src 'none'; img-src data: blob: http: https:; style-src 'unsafe-inline'; font-src data: http: https:; media-src data: blob: http: https:; base-uri 'none'; form-action 'none'; frame-src 'none'";
 
     return `<!DOCTYPE html>
 <html style="color-scheme: ${colorScheme};"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${iframeCsp}">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="x-dns-prefetch-control" content="off">
 <style>
   /* Force content height: some emails set html/body { height: 100% }, which -
      combined with overflow:hidden and our scrollHeight-based auto-resize -
@@ -2977,64 +2920,14 @@ export function EmailViewer({
   ${wordHtmlCSS}
   ${darkModeCSS}
 </style></head><body>${effectiveEmailContent.html}<style>html,body{height:auto!important;min-height:0!important;max-height:none!important}</style></body></html>`;
-  }, [effectiveEmailContent.html, effectiveEmailContent.isHtml, effectiveEmailContent.hasStyleTag, isDark, emailHasNativeDarkMode]);
+  }, [effectiveEmailContent.html, effectiveEmailContent.isHtml, effectiveEmailContent.hasStyleTag, effectiveEmailContent.externalBlocked, isDark, emailHasNativeDarkMode]);
 
-  // Imperatively restore blocked external content inside the iframe document.
-  // Avoids re-rendering the iframe srcDoc (which would reload and flash) when
-  // the user clicks "Load images" or "Trust sender".
-  const restoreBlockedContent = useCallback(() => {
-    const doc = iframeRef.current?.contentDocument;
-    if (!doc) return;
-
-    doc.querySelectorAll('img[data-blocked-src]').forEach((node) => {
-      const el = node as HTMLImageElement;
-      const src = el.getAttribute('data-blocked-src');
-      if (src) {
-        el.setAttribute('src', src);
-        el.style.display = '';
-        el.removeAttribute('data-blocked-src');
-      }
-    });
-
-    doc.querySelectorAll('[data-blocked-style]').forEach((node) => {
-      const el = node as HTMLElement;
-      const style = el.getAttribute('data-blocked-style');
-      if (style !== null) {
-        el.style.cssText = style;
-        el.removeAttribute('data-blocked-style');
-      }
-    });
-
-    doc.querySelectorAll('[data-blocked-background]').forEach((node) => {
-      const el = node as HTMLElement;
-      const bg = el.getAttribute('data-blocked-background');
-      if (bg) {
-        el.setAttribute('background', bg);
-        el.removeAttribute('data-blocked-background');
-      }
-    });
-
-    doc.querySelectorAll('[data-blocked-collapsed-style]').forEach((node) => {
-      const el = node as HTMLElement;
-      const style = el.getAttribute('data-blocked-collapsed-style');
-      if (style !== null) {
-        el.style.cssText = style;
-        el.removeAttribute('data-blocked-collapsed-style');
-      }
-    });
-  }, []);
-
-  // Whenever permission is granted (allow toggled, or sender becomes trusted),
-  // restore blocked content in the existing iframe - no srcDoc rebuild.
-  const senderEmailLower = email?.from?.[0]?.email?.toLowerCase();
-  const senderIsTrustedNow = senderEmailLower
-    ? isSenderTrusted(senderEmailLower) || (trustedSendersAddressBook && isTrustedAddressBookSender(senderEmailLower))
-    : false;
-  useEffect(() => {
-    if (!hasBlockedContent) return;
-    if (!allowExternalContent && !senderIsTrustedNow) return;
-    restoreBlockedContent();
-  }, [allowExternalContent, senderIsTrustedNow, hasBlockedContent, restoreBlockedContent]);
+  // Unblocking external content is handled by rebuilding the iframe srcDoc:
+  // toggling allowExternalContent (both "Load images" and "Trust sender" set
+  // it) recomputes emailContent without blocking and swaps the strict CSP for
+  // the permissive one. In-place restore isn't possible because a document's
+  // CSP is fixed at load — the strict blocking-mode CSP would keep refusing the
+  // restored URLs.
 
   // Tracks the last rendered body height so the loading skeleton can hold
   // the same size - avoids the body shrink/expand flash when switching emails.
@@ -3569,9 +3462,19 @@ export function EmailViewer({
         )}
         {isScheduled && canCancelScheduled && (
           <>
-            <Button variant="default" size="sm" onClick={onCancelScheduled} className="sm:flex sm:h-8" title={t('cancel_scheduled_send')}>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => onRescheduleScheduled?.(new Date(Date.now() + 1000).toISOString())}
+              className="sm:flex sm:h-8"
+              title={t('send_now')}
+            >
+              <Send className="w-4 h-4" />
+              {showToolbarLabels && <span className="hidden sm:inline text-sm">{t('send_now')}</span>}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onCancelScheduled} className="sm:flex sm:h-8" title={t('cancel_scheduled_send')}>
               <X className="w-4 h-4" />
-              <span className="hidden sm:inline text-sm">{t('cancel_scheduled_send')}</span>
+              {showToolbarLabels && <span className="hidden sm:inline text-sm">{t('cancel_scheduled_send')}</span>}
             </Button>
             <Button
               variant="ghost"
@@ -4577,6 +4480,7 @@ export function EmailViewer({
                       +{effectiveAttachments.length - 2} {t('more')}
                     </button>
                   )}
+                  {downloadAllButton}
                   {/* Floating popup for remaining attachments */}
                   {showAllBesideAttachments && effectiveAttachments.length > 2 && (
                     <>
@@ -4823,6 +4727,22 @@ export function EmailViewer({
           const hasListInfo = !!(listHeaders?.listId || listHeaders?.listUnsubscribe || listHeaders?.listHelp || listHeaders?.listPost);
           const hasAuthSection = !!(auth?.spf || auth?.dkim || auth?.dmarc || auth?.iprev || email.spamScore !== undefined || email.spamLLM);
 
+          // Projected, read-only view handed to plugins that render in the
+          // "more details" panel. Includes the parsed `headers` map and full
+          // `source` so plugins can inspect raw headers / message source.
+          // Built lazily here - only when the details panel is expanded.
+          const detailsView = emailToReadView(email);
+          // Lets a plugin add rows under an existing category. The plugin's
+          // own `shouldShow({ email, category })` decides which category it
+          // appears under (or `category === null` for the new bottom section).
+          const CategorySlot = ({ category }: { category: string }) => (
+            <PluginSlot
+              name="email-details-section"
+              className="mt-2 empty:mt-0"
+              extraProps={{ email: detailsView, category }}
+            />
+          );
+
           return (
             <div className="bg-background border-b border-border px-4 lg:px-6" style={{ paddingBlock: 'var(--density-header-py)' }}>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-5">
@@ -4880,6 +4800,7 @@ export function EmailViewer({
                       )}
                     </Row>
                   </dl>
+                  <CategorySlot category="recipients_routing" />
                 </section>
 
                 {hasAuthSection && (
@@ -4965,6 +4886,7 @@ export function EmailViewer({
                         </div>
                       </div>
                     )}
+                    <CategorySlot category="authentication_security" />
                   </section>
                 )}
 
@@ -4999,6 +4921,7 @@ export function EmailViewer({
                         <Row label={t('details.thread_id')} mono>{email.threadId}</Row>
                       )}
                     </dl>
+                    <CategorySlot category="identifiers_threading" />
                   </section>
                 )}
 
@@ -5026,6 +4949,7 @@ export function EmailViewer({
                       <Row label={t('details.account')}>{email.accountLabel}</Row>
                     )}
                   </dl>
+                  <CategorySlot category="message_properties" />
                 </section>
 
                 {hasListInfo && (
@@ -5051,6 +4975,18 @@ export function EmailViewer({
                         <Row label={t('details.list_post')}><span className="break-all">{listHeaders.listPost}</span></Row>
                       )}
                     </dl>
+                    <CategorySlot category="mailing_list" />
+                  </section>
+                )}
+
+                {/* Plugin-supplied category. Plugins whose shouldShow accepts
+                    `category === null` render their own titled section here. */}
+                {hasDetailsSlotOffers && (
+                  <section className="lg:col-span-2 min-w-0">
+                    <PluginSlot
+                      name="email-details-section"
+                      extraProps={{ email: detailsView, category: null }}
+                    />
                   </section>
                 )}
               </div>
@@ -5083,6 +5019,7 @@ export function EmailViewer({
               <div className="flex items-center gap-2">
                 {canCancelScheduled && (
                   <>
+                    <Button size="sm" variant="default" onClick={() => onRescheduleScheduled?.(new Date(Date.now() + 1000).toISOString())}>{t('send_now')}</Button>
                     <Button size="sm" variant="outline" onClick={onCancelScheduled}>{t('cancel_scheduled_send')}</Button>
                     <Button
                       size="sm"
@@ -5224,8 +5161,8 @@ export function EmailViewer({
       {/* === ATTACHMENTS below header (below-header mode, desktop only) === */}
       {attachmentPosition === 'below-header' && effectiveAttachments.length > 0 && (
         <div className="hidden lg:block bg-background border-b border-border px-4 lg:px-6 py-2">
-          <div className="relative">
-          <div ref={belowHeaderRowRef} className="relative flex items-center gap-2 overflow-hidden">
+          <div className="relative flex items-center gap-2">
+          <div ref={belowHeaderRowRef} className="relative flex items-center gap-2 overflow-hidden flex-1 min-w-0">
             {/* Hidden ghost row used purely for measuring chip widths */}
             <div
               ref={belowHeaderGhostRef}
@@ -5346,6 +5283,7 @@ export function EmailViewer({
               </button>
             )}
           </div>
+            {downloadAllButton}
             {showAllBelowHeaderAttachments && visibleBelowHeaderCount !== null && effectiveAttachments.length > visibleBelowHeaderCount && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowAllBelowHeaderAttachments(false)} />
@@ -5483,6 +5421,7 @@ export function EmailViewer({
                   +{effectiveAttachments.length - 2} {t('more')}
                 </button>
               )}
+              {downloadAllButton}
               {showAllMobileAttachments && effectiveAttachments.length > 2 && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowAllMobileAttachments(false)} />

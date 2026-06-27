@@ -627,7 +627,7 @@ export default function SettingsPage() {
     { id: 'content_senders', label: t('tabs.content_senders'), icon: tabIcons.content_senders, group: 'privacy' },
 
     // Apps
-    ...(supportsCalendar ? [{ id: 'calendar' as Tab, label: t('tabs.calendar'), icon: tabIcons.calendar, group: 'apps' as TabGroup }] : []),
+    ...(supportsCalendar && isFeatureEnabled('calendarEnabled') ? [{ id: 'calendar' as Tab, label: t('tabs.calendar'), icon: tabIcons.calendar, group: 'apps' as TabGroup }] : []),
     ...(isFeatureEnabled('contactsEnabled') ? [{ id: 'contacts' as Tab, label: t('tabs.contacts'), icon: tabIcons.contacts, group: 'apps' as TabGroup }] : []),
     ...(supportsFiles && isFeatureEnabled('filesEnabled') ? [{ id: 'files' as Tab, label: t('tabs.files'), icon: tabIcons.files, group: 'apps' as TabGroup }] : []),
     ...(isFeatureEnabled('sidebarAppsEnabled') ? [{ id: 'sidebar_apps' as Tab, label: t('tabs.sidebar_apps'), icon: tabIcons.sidebar_apps, group: 'apps' as TabGroup }] : []),
@@ -646,7 +646,7 @@ export default function SettingsPage() {
     ? ([
         managedAccount.capabilities.sieve && supportsSieve ? 'filters' : null,
         managedAccount.capabilities.mail && supportsVacation ? 'vacation' : null,
-        managedAccount.capabilities.calendars && supportsCalendar ? 'calendar' : null,
+        managedAccount.capabilities.calendars && supportsCalendar && isFeatureEnabled('calendarEnabled') ? 'calendar' : null,
         managedAccount.capabilities.contacts && isFeatureEnabled('contactsEnabled') ? 'contacts' : null,
       ].filter(Boolean) as Tab[])
     : [];

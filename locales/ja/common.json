@@ -134,7 +134,10 @@
     "nav_label": "ナビゲーション",
     "add_app": "アプリ",
     "shared": "共有",
-    "scheduled": "予約済み"
+    "scheduled": "予約済み",
+    "unified_all_unread": "すべての未読",
+    "unified_all_starred": "すべてのスター付き",
+    "unified_all_mail": "すべてのメール"
   },
   "protocol_handlers": {
     "title": "既定のアプリ",
@@ -562,7 +565,8 @@
       "add_to_contacts": "連絡先に追加",
       "copied": "コピーしました！",
       "copy_failed": "コピーに失敗しました"
-    }
+    },
+    "send_now": "今すぐ送信"
   },
   "email_composer": {
     "read_receipt_on": "開封確認を要求中（クリックで無効化）",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "ペルシア語に切り替え"
   },
   "settings": {
     "title": "設定",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "デスクトップ専用のパワーユーザー向けレイアウトで、マルチタブのメッセージ閲覧やアカウント横断のワークフローに対応します。標準インターフェイスには影響せず、いつでも元に戻せます。",
         "open_label": "Pro インターフェイスを開く",
         "back_to_standard": "標準に戻る"
+      },
+      "cross_unread": {
+        "label": "すべてのアカウント: 未読",
+        "description": "「すべてのアカウント」セクションに、すべてのアカウントの未読メールを一覧表示する項目を表示します。迷惑メール、送信済み、アーカイブ、ゴミ箱、下書きを除くすべてのフォルダーが対象です。"
+      },
+      "cross_starred": {
+        "label": "すべてのアカウント: スター付き",
+        "description": "「すべてのアカウント」セクションに、すべてのアカウントのスター付きメールを一覧表示する項目を表示します。迷惑メール、送信済み、アーカイブ、ゴミ箱、下書きを除くすべてのフォルダーが対象です。"
+      },
+      "cross_all": {
+        "label": "すべてのアカウント: すべてのメール",
+        "description": "「すべてのアカウント」セクションに、すべてのアカウントのすべてのメールを一覧表示する項目を表示します。迷惑メール、送信済み、アーカイブ、ゴミ箱、下書きを除くすべてのフォルダーが対象です。"
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "アーカイブ",
         "tag": "ラベル",
         "spam": "スパムとしてマーク",
+        "not_spam": "迷惑メールではない",
         "none_selected": "アクションが選択されていません",
         "mode_label": "表示モード",
         "mode_inline": "インライン",
@@ -1226,6 +1247,10 @@
         "off": "オフ",
         "seconds": "{seconds} 秒",
         "unsupported": "現在のアカウントは遅延送信のサポートを通知していません。この設定は他のアカウント用に保存されます。"
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "共有"
     },
     "address_books": {
+      "create": "新しいアドレス帳",
+      "created": "アドレス帳を作成しました",
+      "create_failed": "アドレス帳の作成に失敗しました",
       "title": "マイアドレス帳",
       "shared_prefix": "共有: {name}",
       "moved": "連絡先を {name} に移動しました",

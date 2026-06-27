@@ -134,7 +134,10 @@
     "mail": "E-mail",
     "nav_label": "Navigare",
     "add_app": "Aplicații",
-    "scheduled": "Programat"
+    "scheduled": "Programat",
+    "unified_all_unread": "Toate necitite",
+    "unified_all_starred": "Toate cu stea",
+    "unified_all_mail": "Toată poșta"
   },
   "protocol_handlers": {
     "title": "Aplicații implicite",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Adaugă la contacte",
       "copied": "Copiat!",
       "copy_failed": "Copierea a eșuat"
-    }
+    },
+    "send_now": "Trimite acum"
   },
   "email_composer": {
     "read_receipt_on": "Solicitare confirmare de citire (faceți clic pentru a dezactiva)",
@@ -801,7 +805,10 @@
     "pt": "Portugheză",
     "ru": "Русский",
     "uk": "Ukrainiană",
-    "zh": "Chineză simplificată"
+    "zh": "Chineză simplificată",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Comută la persană"
   },
   "settings": {
     "title": "Setări",
@@ -922,6 +929,7 @@
         "description": "Afișați o intrare „Toate mesajele” deasupra folderelor, care reunește mesajele din toate folderele acestui cont într-o singură listă.",
         "folders_label": "Dosare în „Toate mesajele”",
         "folders_description": "Alegeți ce dosare să fie incluse în vizualizarea „Toate mesajele”.",
+        "account_hint": "Se aplică pentru {account}.",
         "no_folders": "Nu sunt disponibile foldere."
       },
       "colorful_sidebar_icons": {
@@ -933,6 +941,18 @@
         "description": "Aspect destinat utilizatorilor avansați, disponibil doar pe desktop, cu navigare prin mesaje în mai multe file și fluxuri de lucru între conturi. Interfața standard nu este afectată; puteți reveni la aceasta în orice moment.",
         "open_label": "Interfața Open Pro",
         "back_to_standard": "Înapoi la standard"
+      },
+      "cross_unread": {
+        "label": "Toate conturile: Necitite",
+        "description": "Afișează în secțiunea Toate conturile o intrare cu poșta necitită din toate conturile, în toate folderele cu excepția spam, trimise, arhivă, coș și ciorne."
+      },
+      "cross_starred": {
+        "label": "Toate conturile: Cu stea",
+        "description": "Afișează în secțiunea Toate conturile o intrare cu poșta cu stea din toate conturile, în toate folderele cu excepția spam, trimise, arhivă, coș și ciorne."
+      },
+      "cross_all": {
+        "label": "Toate conturile: Toată poșta",
+        "description": "Afișează în secțiunea Toate conturile o intrare cu toată poșta din toate conturile, în toate folderele cu excepția spam, trimise, arhivă, coș și ciorne."
       }
     },
     "keywords": {
@@ -1189,6 +1209,7 @@
         "archive": "Arhivează",
         "tag": "Etichetă",
         "spam": "Marcați ca spam",
+        "not_spam": "Nu este spam",
         "none_selected": "Nu sunt selectate acțiuni",
         "mode_label": "Modul de afișare",
         "mode_inline": "În text",
@@ -1229,6 +1250,10 @@
         "off": "Oprit",
         "seconds": "{seconds} secunde",
         "unsupported": "Contul curent nu indică faptul că acceptă trimiterea amânată. Setarea este totuși salvată pentru alte conturi."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2148,6 +2173,9 @@
       "title": "Partajat"
     },
     "address_books": {
+      "create": "Agendă nouă",
+      "created": "Agendă creată",
+      "create_failed": "Nu s-a putut crea agenda",
       "title": "Agendele mele de adrese",
       "shared_prefix": "Partajat: {name}",
       "moved": "Contactul a fost mutat la {name}",

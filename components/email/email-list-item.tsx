@@ -29,11 +29,12 @@ interface EmailListItemProps {
   onArchive?: () => void;
   onSetColorTag?: (color: string | null) => void;
   onMarkAsSpam?: () => void;
+  onUndoSpam?: () => void;
 }
 
-export function EmailListItem({ email, selected, onClick, onDoubleClick, onContextMenu, onToggleStar, onMarkAsRead, onDelete, onArchive, onSetColorTag, onMarkAsSpam }: EmailListItemProps) {
+export function EmailListItem({ email, selected, onClick, onDoubleClick, onContextMenu, onToggleStar, onMarkAsRead, onDelete, onArchive, onSetColorTag, onMarkAsSpam, onUndoSpam }: EmailListItemProps) {
   const t = useTranslations('email_viewer');
-  const { selectedEmailIds, toggleEmailSelection, selectRangeEmails, selectedMailbox, mailboxes, clearSelection } = useEmailStore();
+  const { selectedEmailIds, toggleEmailSelection, selectRangeEmails, selectedMailbox, mailboxes, clearSelection, isUnifiedView, unifiedRole } = useEmailStore();
   const showPreview = useSettingsStore((state) => state.showPreview);
   const density = useSettingsStore((state) => state.density);
   const mailLayout = useSettingsStore((state) => state.mailLayout);
@@ -46,8 +47,11 @@ export function EmailListItem({ email, selected, onClick, onDoubleClick, onConte
   const isImportant = email.keywords?.["$important"];
   const isAnswered = email.keywords?.$answered;
   const isForwarded = email.keywords?.$forwarded;
-  // In Sent/Drafts folders, show recipient instead of sender (which is always "me")
-  const currentMailboxRole = mailboxes.find(mb => mb.id === selectedMailbox)?.role;
+  // In Sent/Drafts folders, show recipient instead of sender (which is always "me").
+  // In aggregate role-views the selected mailbox is virtual → fall back to the
+  // unified role so junk-contextual UI (spam ↔ not-spam) and avatar hiding work.
+  const currentMailboxRole = mailboxes.find(mb => mb.id === selectedMailbox)?.role
+    ?? (isUnifiedView ? (unifiedRole ?? undefined) : undefined);
   const showRecipient = currentMailboxRole === 'sent' || currentMailboxRole === 'drafts';
   const sender = showRecipient ? (email.to?.[0] ?? email.from?.[0]) : email.from?.[0];
   const isMobile = useUIStore((state) => state.isMobile);
@@ -162,7 +166,7 @@ export function EmailListItem({ email, selected, onClick, onDoubleClick, onConte
 
         {/* Unread indicator */}
         {isUnread && (
-          <div className="absolute left-1 top-1/2 -translate-y-1/2">
+          <div className="absolute left-0.5 top-1/2 -translate-y-1/2">
             <Circle className="w-2 h-2 fill-unread text-unread" />
           </div>
         )}
@@ -191,13 +195,13 @@ export function EmailListItem({ email, selected, onClick, onDoubleClick, onConte
                 </span>
                 <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
                   <span className={cn(
-                    'shrink-0 truncate',
+                    'min-w-0 truncate',
                     isUnread ? 'font-semibold text-foreground' : 'text-foreground/90'
                   )}>
                     {email.subject || t('no_subject')}
                   </span>
                   {inlinePreview && (
-                    <span className="min-w-0 truncate text-muted-foreground">{inlinePreview}</span>
+                    <span className="min-w-0 shrink-[9999] truncate text-muted-foreground">{inlinePreview}</span>
                   )}
                 </div>
               </div>
@@ -321,6 +325,8 @@ export function EmailListItem({ email, selected, onClick, onDoubleClick, onConte
         onArchive={onArchive}
         onSetColorTag={onSetColorTag}
         onMarkAsSpam={onMarkAsSpam}
+        onUndoSpam={onUndoSpam}
+        isInJunk={currentMailboxRole === 'junk'}
       />
     </div>
   );

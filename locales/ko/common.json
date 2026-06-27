@@ -134,7 +134,10 @@
     "nav_label": "내비게이션",
     "add_app": "앱",
     "shared": "공유됨",
-    "scheduled": "예약됨"
+    "scheduled": "예약됨",
+    "unified_all_unread": "모든 읽지 않음",
+    "unified_all_starred": "모든 별표",
+    "unified_all_mail": "모든 메일"
   },
   "protocol_handlers": {
     "title": "기본 앱",
@@ -562,7 +565,8 @@
       "add_to_contacts": "연락처에 추가",
       "copied": "복사됨!",
       "copy_failed": "복사하지 못했습니다"
-    }
+    },
+    "send_now": "지금 보내기"
   },
   "email_composer": {
     "read_receipt_on": "읽음 확인 요청됨 (클릭하여 해제)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "페르시아어로 전환"
   },
   "settings": {
     "title": "설정",
@@ -919,6 +926,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -930,6 +938,18 @@
         "description": "데스크톱 전용 파워 유저 레이아웃으로, 다중 탭 메시지 탐색과 계정 간 워크플로우를 지원합니다. 표준 인터페이스에는 영향이 없으며 언제든지 되돌릴 수 있습니다.",
         "open_label": "Pro 인터페이스 열기",
         "back_to_standard": "표준으로 돌아가기"
+      },
+      "cross_unread": {
+        "label": "모든 계정: 읽지 않음",
+        "description": "모든 계정 섹션에 모든 계정의 읽지 않은 메일을 나열하는 항목을 표시합니다. 스팸, 보낸편지함, 보관함, 휴지통, 임시보관함을 제외한 모든 폴더가 대상입니다."
+      },
+      "cross_starred": {
+        "label": "모든 계정: 별표",
+        "description": "모든 계정 섹션에 모든 계정의 별표 메일을 나열하는 항목을 표시합니다. 스팸, 보낸편지함, 보관함, 휴지통, 임시보관함을 제외한 모든 폴더가 대상입니다."
+      },
+      "cross_all": {
+        "label": "모든 계정: 모든 메일",
+        "description": "모든 계정 섹션에 모든 계정의 모든 메일을 나열하는 항목을 표시합니다. 스팸, 보낸편지함, 보관함, 휴지통, 임시보관함을 제외한 모든 폴더가 대상입니다."
       }
     },
     "keywords": {
@@ -1186,6 +1206,7 @@
         "archive": "보관",
         "tag": "태그",
         "spam": "스팸으로 표시",
+        "not_spam": "스팸 아님",
         "none_selected": "선택된 액션 없음",
         "mode_label": "표시 모드",
         "mode_inline": "목록 안쪽",
@@ -1226,6 +1247,10 @@
         "off": "끔",
         "seconds": "{seconds}초",
         "unsupported": "현재 계정은 지연 보내기 지원을 알리지 않습니다. 설정은 다른 계정을 위해 계속 저장됩니다."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2147,6 +2172,9 @@
       "title": "공유됨"
     },
     "address_books": {
+      "create": "새 주소록",
+      "created": "주소록이 생성되었습니다",
+      "create_failed": "주소록을 만들지 못했습니다",
       "title": "내 주소록",
       "shared_prefix": "공유됨: {name}",
       "moved": "연락처가 {name}(으)로 이동되었어요",

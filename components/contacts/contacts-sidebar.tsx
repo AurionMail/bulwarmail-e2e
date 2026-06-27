@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef, type DragEvent } from "react";
 import { useTranslations } from "next-intl";
-import { BookUser, User, Users, Plus, Share2, Book, ChevronRight, ChevronDown, UserPlus, UsersRound, Upload, Tag, Pencil, Trash2, Settings, Mail } from "lucide-react";
+import { BookUser, User, Users, Plus, Share2, Book, BookPlus, ChevronRight, ChevronDown, UserPlus, UsersRound, Upload, Tag, Pencil, Trash2, Settings, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuSubMenu } from "@/components/ui/context-menu";
@@ -22,6 +22,7 @@ interface ContactsSidebarProps {
   onSelectCategory: (category: ContactCategory) => void;
   onCreateGroup: () => void;
   onCreateContact: () => void;
+  onCreateAddressBook?: () => void;
   onImport?: () => void;
   onEditGroup?: (groupId: string) => void;
   onDeleteGroup?: (groupId: string) => void;
@@ -91,6 +92,7 @@ export function ContactsSidebar({
   onSelectCategory,
   onCreateGroup,
   onCreateContact,
+  onCreateAddressBook,
   onImport,
   onEditGroup,
   onDeleteGroup,
@@ -298,6 +300,15 @@ export function ContactsSidebar({
                 <UsersRound className="w-4 h-4" />
                 {t("groups.create")}
               </button>
+              {onCreateAddressBook && (
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left"
+                  onClick={() => { setShowMenu(false); onCreateAddressBook(); }}
+                >
+                  <BookPlus className="w-4 h-4" />
+                  {t("address_books.create")}
+                </button>
+              )}
               {onImport && (
                 <button
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left"

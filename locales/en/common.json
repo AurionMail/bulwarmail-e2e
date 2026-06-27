@@ -134,7 +134,10 @@
     "mail": "Mail",
     "nav_label": "Navigation",
     "add_app": "Apps",
-    "scheduled": "Scheduled"
+    "scheduled": "Scheduled",
+    "unified_all_unread": "All unread",
+    "unified_all_starred": "All starred",
+    "unified_all_mail": "All mail"
   },
   "protocol_handlers": {
     "title": "Default apps",
@@ -562,7 +565,8 @@
       "add_to_contacts": "Add to contacts",
       "copied": "Copied!",
       "copy_failed": "Failed to copy"
-    }
+    },
+    "send_now": "Send now"
   },
   "email_composer": {
     "read_receipt_on": "Read receipt requested (click to disable)",
@@ -801,7 +805,10 @@
     "pt": "Português",
     "ru": "Русский",
     "uk": "Українська",
-    "zh": "简体中文"
+    "zh": "简体中文",
+    "fa": "فارسی",
+    "farsi": "فارسی",
+    "switch_to_farsi": "Switch to Farsi"
   },
   "settings": {
     "title": "Settings",
@@ -922,6 +929,7 @@
         "description": "Show an \"All Mail\" entry above your folders that merges messages from across this account's folders into one list.",
         "folders_label": "Folders in All Mail",
         "folders_description": "Choose which folders are merged into the All Mail view.",
+        "account_hint": "Applies to {account}.",
         "no_folders": "No folders available."
       },
       "colorful_sidebar_icons": {
@@ -933,6 +941,18 @@
         "description": "Desktop-only power-user layout with multi-tab message browsing and cross-account workflows. The standard interface is unaffected; you can switch back at any time.",
         "open_label": "Open Pro Interface",
         "back_to_standard": "Back to standard"
+      },
+      "cross_unread": {
+        "label": "All accounts: Unread",
+        "description": "Show an entry in the All accounts section listing unread mail across every account, spanning all folders except junk, sent, archive, trash and drafts."
+      },
+      "cross_starred": {
+        "label": "All accounts: Starred",
+        "description": "Show an entry in the All accounts section listing starred mail across every account, spanning all folders except junk, sent, archive, trash and drafts."
+      },
+      "cross_all": {
+        "label": "All accounts: All mail",
+        "description": "Show an entry in the All accounts section listing all mail across every account, spanning all folders except junk, sent, archive, trash and drafts."
       }
     },
     "keywords": {
@@ -1189,6 +1209,7 @@
         "archive": "Archive",
         "tag": "Tag",
         "spam": "Mark as Spam",
+        "not_spam": "Not Spam",
         "none_selected": "No actions selected",
         "mode_label": "Display Mode",
         "mode_inline": "Inline",
@@ -1229,6 +1250,10 @@
         "off": "Off",
         "seconds": "{seconds} seconds",
         "unsupported": "The current account does not advertise delayed-send support. The setting is still saved for other accounts."
+      },
+      "return_to_list_after_action": {
+        "label": "Return to list after delete or mark unread",
+        "description": "After deleting or marking the open message unread, go back to the message list instead of opening the next message."
       }
     },
     "composer": {
@@ -2148,6 +2173,9 @@
       "title": "Shared"
     },
     "address_books": {
+      "create": "New address book",
+      "created": "Address book created",
+      "create_failed": "Failed to create address book",
       "title": "My Address Books",
       "shared_prefix": "Shared: {name}",
       "moved": "Contact moved to {name}",

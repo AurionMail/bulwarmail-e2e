@@ -6,6 +6,7 @@ import type { Email } from '@/lib/jmap/types';
 import {
   emailExportFilename,
   attachmentDownloadFilename,
+  attachmentsBundleFilename,
   bundleExportFilename,
   emailVars,
   attachmentVars,
@@ -41,11 +42,11 @@ describe('emailExportFilename', () => {
     expect(emailExportFilename(makeEmail({}), '{unknown_token}')).toBe('email.eml');
   });
 
-  it('CHARACTERISATION: per-token sanitise caps each value at 80 chars', () => {
-    // sanitizePart defaults to maxLen=80, applied per {token} during render —
-    // so a single long {subject} is truncated to 80 well before the 200 cap.
+  it('lets a single long token reach the 200-char filename cap', () => {
+    // Each {token} is now capped at FILENAME_MAX_LEN (200), so the overall
+    // filename limit governs instead of an earlier 80-char per-token cap.
     const out = emailExportFilename(makeEmail({ subject: 'a'.repeat(300) }), '{subject}');
-    expect(out).toBe('a'.repeat(80) + '.eml');
+    expect(out).toBe('a'.repeat(200) + '.eml');
   });
 });
 
@@ -90,6 +91,24 @@ describe('bundleExportFilename', () => {
 
   it('uses the default template', () => {
     expect(bundleExportFilename(5, {}, '2026-05-22T14:05:33Z')).toBe('emails-5.zip');
+  });
+});
+
+describe('attachmentsBundleFilename', () => {
+  it('embeds the sanitised subject', () => {
+    expect(attachmentsBundleFilename(makeEmail({ subject: 'Invoice March' }))).toBe('attachments_Invoice March.zip');
+  });
+
+  it('sanitises filesystem-reserved characters', () => {
+    expect(attachmentsBundleFilename(makeEmail({ subject: 'Q1/Q2: report' }))).toBe('attachments_Q1_Q2_ report.zip');
+  });
+
+  it('falls back when the subject is empty', () => {
+    expect(attachmentsBundleFilename(makeEmail({ subject: '' }))).toBe('attachments.zip');
+  });
+
+  it('falls back when there is no email', () => {
+    expect(attachmentsBundleFilename(null)).toBe('attachments.zip');
   });
 });
 

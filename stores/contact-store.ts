@@ -201,6 +201,7 @@ interface ContactStore {
   bulkDeleteContacts: (client: IJMAPClient | null, ids: string[]) => Promise<void>;
   bulkAddToGroup: (client: IJMAPClient | null, groupId: string, contactIds: string[]) => Promise<void>;
   moveContactToAddressBook: (client: IJMAPClient, contactIds: string[], addressBook: AddressBook) => Promise<void>;
+  createAddressBook: (client: IJMAPClient, name: string) => Promise<AddressBook>;
   renameAddressBook: (client: IJMAPClient, addressBook: AddressBook, newName: string) => Promise<void>;
   removeAddressBook: (client: IJMAPClient, addressBook: AddressBook) => Promise<void>;
   shareAddressBook: (client: IJMAPClient, addressBook: AddressBook, principalId: string, rights: AddressBookRights | null) => Promise<void>;
@@ -846,6 +847,22 @@ export const useContactStore = create<ContactStore>()(
               }),
             }));
           }
+        }
+      },
+
+      createAddressBook: async (client, name) => {
+        set({ error: null });
+        const trimmed = name.trim();
+        if (!trimmed) throw new Error('Address book name is required');
+        try {
+          // New books always belong to the active account; the caller refreshes
+          // the list afterwards (single- or multi-account aware) so the freshly
+          // created book lands in state with its full server-set properties.
+          return await client.createAddressBook(trimmed);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Failed to create address book';
+          set({ error: msg });
+          throw error;
         }
       },
 

@@ -34,6 +34,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn, buildMailboxTree, MailboxNode } from "@/lib/utils";
+import { localizeMailboxName } from "@/lib/mailbox-label";
 import { useSettingsStore, KEYWORD_PALETTE } from "@/stores/settings-store";
 
 interface Position {
@@ -143,6 +144,7 @@ export function EmailContextMenu({
   onRescheduleScheduled,
 }: EmailContextMenuProps) {
   const t = useTranslations("context_menu");
+  const tSidebar = useTranslations("sidebar");
   const _tColor = useTranslations("email_viewer.color_tag");
   const emailKeywords = useSettingsStore((state) => state.emailKeywords);
   const isUnread = !email.keywords?.$seen;
@@ -302,12 +304,13 @@ export function EmailContextMenu({
               return nodes.map((node) => {
                 const Icon = getMailboxIcon(node.role);
                 const isTarget = moveTargetIds.has(node.id);
+                const nodeLabel = localizeMailboxName(node.role, node.name, (k) => tSidebar(`mailboxes.${k}`));
                 return (
                   <div key={node.id}>
                     {isTarget ? (
                       <ContextMenuItem
                         icon={Icon}
-                        label={node.name}
+                        label={nodeLabel}
                         onClick={() =>
                           handleAction(() =>
                             showBatchActions
@@ -319,7 +322,7 @@ export function EmailContextMenu({
                     ) : (
                       <div className="px-3 py-1.5 text-sm flex items-center gap-2 text-muted-foreground">
                         <Icon className="w-4 h-4 flex-shrink-0" />
-                        <span>{node.name}</span>
+                        <span>{nodeLabel}</span>
                       </div>
                     )}
                     {node.children.length > 0 && (
