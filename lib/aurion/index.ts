@@ -1,5 +1,5 @@
 import { AurionApiClient, AurionSession } from 'aurion-crypto-sdk';
-import { AurionIndexedDBDriver } from 'aurion-crypto-sdk/';
+import { AurionIndexedDBDriver } from 'aurion-crypto-sdk';
 import { cryptoWorkerBridge } from './worker-bridge';
 
 export const aurionApi = new AurionApiClient(
