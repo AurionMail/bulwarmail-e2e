@@ -30,15 +30,14 @@ jobs:
         run: npm run build
 
       - name: Package production artifact
-        # On compresse .next, public, et les fichiers de dépendances nécessaires au runtime
-        # On exclut volontairement 'node_modules' et le code source brut (.ts, .tsx, etc.)
+        # On liste uniquement les fichiers et dossiers indispensables au runtime.
+        # L'ordre est strict pour éviter les erreurs de syntaxe POSIX de tar.
         run: |
           tar -czvf bulwark-webmail.tar.gz \
             .next \
             public \
             package.json \
-            package-lock.json \
-            --exclude='node_modules'
+            package-lock.json
 
       - name: Upload Artifact to Release
         uses: svenstaro/upload-release-action@v2
