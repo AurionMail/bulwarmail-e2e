@@ -18,6 +18,7 @@ const STEP_KEYS: Record<string, string[]> = {
   server: [
     'appName',
     'jmapServerUrl',
+    'AurionServerUrl',
     'stalwartFeaturesEnabled',
     'jmapServers',
     'jmapServerAutoPickByDomain',

@@ -26,6 +26,7 @@ interface WizardConfig {
   // Server
   appName: string;
   jmapServerUrl: string;
+  AurionServerUrl: string;
   stalwartFeaturesEnabled: boolean;
   jmapServers: JmapServerRow[];
   jmapServerAutoPickByDomain: boolean;
@@ -57,6 +58,7 @@ interface WizardConfig {
 const EMPTY_CONFIG: WizardConfig = {
   appName: 'Bulwark Webmail',
   jmapServerUrl: '',
+  AurionServerUrl: '',
   stalwartFeaturesEnabled: true,
   jmapServers: [],
   jmapServerAutoPickByDomain: false,
@@ -685,6 +687,7 @@ function ServerStep({ config, setConfig, onNext }: Pick<StepProps, 'config' | 's
       await onNext('server', {
         appName: config.appName,
         jmapServerUrl: config.jmapServerUrl,
+        AurionServerUrl: config.AurionServerUrl,
         stalwartFeaturesEnabled: config.stalwartFeaturesEnabled,
         // The API route runs parseJmapServers on this; we pre-canonicalize
         // here so the round-trip is clean.
@@ -701,6 +704,9 @@ function ServerStep({ config, setConfig, onNext }: Pick<StepProps, 'config' | 's
       <StepHeader title="Server" subtitle="Where your mail lives." />
       <Field label="Application name">
         <Input value={config.appName} onChange={(v) => setConfig({ ...config, appName: v })} required />
+      </Field>
+      <Field label="Aurion Server URL" hint="The default server users connect to. Example: https://aurion.example.com">
+        <Input value={config.AurionServerUrl} onChange={(v) => setConfig({ ...config, AurionServerUrl: v })} required placeholder="https://" type="url"/>
       </Field>
       <Field label="JMAP server URL" hint="The default server users connect to. Example: https://mail.example.com">
         <div className="flex gap-2">

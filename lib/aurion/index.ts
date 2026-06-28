@@ -1,9 +1,11 @@
 import { AurionApiClient, AurionSession } from 'aurion-crypto-sdk';
 import { AurionIndexedDBDriver } from 'aurion-crypto-sdk';
 import { cryptoWorkerBridge } from './worker-bridge';
+import { configManager } from '@/lib/admin/config-manager';
+
 
 export const aurionApi = new AurionApiClient(
-  process.env.AURION_SERVER_URL || 'https://api.aurion.com'
+  configManager.get<string>('AurionServerUrl', '') || process.env.AURION_SERVER_URL || 'https://api.aurion.com'
 );
 
 // On exporte le driver pour pouvoir faire des getItem / setItem directement dans les stores de l'app

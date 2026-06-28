@@ -8,6 +8,7 @@ import type { PublicJmapServerEntry } from '@/lib/admin/jmap-servers';
 interface ConfigData {
   appName: string;
   jmapServerUrl: string;
+  AurionServerUrl: string;
   oauthEnabled: boolean;
   oauthOnly: boolean;
   oauthClientId: string;
@@ -87,6 +88,7 @@ export function useConfig(): AppConfig {
   const [config, setConfig] = useState<AppConfig>({
     appName: configCache?.appName || 'Webmail',
     jmapServerUrl: configCache?.jmapServerUrl || '',
+    AurionServerUrl: configCache?.AurionServerUrl || '',
     oauthEnabled: configCache?.oauthEnabled || false,
     oauthOnly: configCache?.oauthOnly || false,
     oauthClientId: configCache?.oauthClientId || '',
@@ -122,6 +124,7 @@ export function useConfig(): AppConfig {
       setConfig({
         appName: configCache.appName,
         jmapServerUrl: configCache.jmapServerUrl,
+        AurionServerUrl: configCache.AurionServerUrl,
         oauthEnabled: configCache.oauthEnabled,
         oauthOnly: configCache.oauthOnly,
         oauthClientId: configCache.oauthClientId,
@@ -158,6 +161,7 @@ export function useConfig(): AppConfig {
         setConfig({
           appName: data.appName,
           jmapServerUrl: data.jmapServerUrl,
+          AurionServerUrl: data.AurionServerUrl,
           oauthEnabled: data.oauthEnabled,
           oauthOnly: data.oauthOnly,
           oauthClientId: data.oauthClientId,
