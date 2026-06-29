@@ -424,7 +424,7 @@ export const useAuthStore = create<AuthState>()(
 
           } else if (securityMode === 'Parano') {
             // Validation ZKP auprès du serveur Aurion pour authentifier la session
-            // CORRECTION : Utilisation de notre driver IndexedDB (aurionStorage) à la place de localStorage
+            //  Utilisation de notre driver IndexedDB (aurionStorage) à la place de localStorage
             const localCiphertext = await aurionStorage.getItem(`aurion_creds_${username}`);
             
             if (!localCiphertext) {
