@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
   const appName =
     branded<string>('appName', '') || process.env.NEXT_PUBLIC_APP_NAME || 'Webmail';
   const jmapServerUrl = configManager.get<string>('jmapServerUrl') || process.env.NEXT_PUBLIC_JMAP_SERVER_URL || '';
+  const AurionServerUrl = configManager.get<string>('AurionServerUrl') || process.env.NEXT_PUBLIC_AURION_SERVER_URL || '';
   const oauthEnabled = configManager.get<boolean>('oauthEnabled', false);
   const oauthOnly = oauthEnabled && configManager.get<boolean>('oauthOnly', false);
   const stalwartFeaturesEnabled = configManager.get<boolean>('stalwartFeaturesEnabled', true);
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
     {
       appName,
       jmapServerUrl,
+      AurionServerUrl,
       oauthEnabled,
       oauthOnly,
       oauthClientId: configManager.get<string>('oauthClientId', ''),
