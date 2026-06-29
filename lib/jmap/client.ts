@@ -2462,16 +2462,24 @@ export class JMAPClient implements IJMAPClient {
     let localSentBody: string | undefined = undefined;
 
     if (aurionSession && aurionSession.isUnlocked()) {
-       console.log("[Crypto] Aurion session is unlocked. Sending email with encryption.");
-      console.log(aurionSession);
-      console.log(aurionSession.h0);
+      console.log("[Crypto] Aurion session is unlocked. Sending email with encryption.");
 
       const activePublicKeys: PublicKey[] = [];
-      const allRecipients = [...to, ...(cc || [])].map(email => email.toLowerCase().trim());
+      
+      // CORRECTION : On extrait l'adresse email pure grâce à parseRecipientString
+      const allRecipients = [...to, ...(cc || [])].map(recipientStr => {
+        return parseRecipientString(recipientStr).email.toLowerCase().trim();
+      });
 
       if (resolvedPublicKeys) {
+        // CORRECTION : On normalise aussi les clés de resolvedPublicKeys en minuscules pour éviter les râtés
+        const normalizedKeys = Object.keys(resolvedPublicKeys).reduce((acc, key) => {
+          acc[key.toLowerCase().trim()] = resolvedPublicKeys[key];
+          return acc;
+        }, {} as Record<string, string>);
+
         for (const email of allRecipients) {
-          const armoredKey = resolvedPublicKeys[email];
+          const armoredKey = normalizedKeys[email]; // Utilisation de l'objet normalisé
           if (armoredKey) {
             try {
               const parsedKey = await aurionSession.importPublicKey(armoredKey);
@@ -2479,6 +2487,8 @@ export class JMAPClient implements IJMAPClient {
             } catch (err) {
               console.warn(`[Crypto] Échec du parsing de la clé publique pour ${email}:`, err);
             }
+          } else {
+            console.warn(`[Crypto] Aucune clé publique trouvée dans resolvedPublicKeys pour l'adresse: ${email}`);
           }
         }
       }
@@ -2488,10 +2498,10 @@ export class JMAPClient implements IJMAPClient {
         : body;
       const totalTargetRecipients = to.length + (cc?.length || 0);
 
-      // CAS 1 : Chiffrement de bout en bout (Au moins un destinataire possède une clé)
+      // CAS 1 : Chiffrement de bout en bout
       if (activePublicKeys.length === totalTargetRecipients && totalTargetRecipients > 0) {
+        console.log(`[Crypto] Succès : ${activePublicKeys.length}/${totalTargetRecipients} clés trouvées. Chiffrement réseau activé.`);
         try {
-          // On s'ajoute soi-même à la liste pour le dossier Sent
           const myPublicKey = aurionSession.getPrivateKeyForIdentity(senderEmail).toPublic();
           if (!activePublicKeys.some(k => k.getFingerprint() === myPublicKey.getFingerprint())) {
             activePublicKeys.push(myPublicKey);
@@ -2501,19 +2511,13 @@ export class JMAPClient implements IJMAPClient {
         }
 
         networkBody = await aurionSession.encryptForRecipients(activePublicKeys, clearPayload);
-        networkHtmlBody = undefined; // Un seul conteneur chiffré OpenPGP
+        networkHtmlBody = undefined; 
       } 
-      // CAS 2 : FLUX HYBRIDE (Personne n'a de clé publique)
+      // CAS 2 : FLUX HYBRIDE
       else {
-        // Le destinataire recevra le contenu original en clair (networkBody & networkHtmlBody restent inchangés)
-        // Mais on prépare une version chiffrée ZK spécifiquement pour notre dossier Sent local !
+        console.log(`[Crypto] Flux hybride activé : seulement ${activePublicKeys.length}/${totalTargetRecipients} clés valides.`);
         localSentBody = await aurionSession.encryptForSelf(clearPayload, senderEmail);
       }
-    }else{
-      console.log("[Crypto] Aurion session is locked or unavailable. Sending email without encryption.");
-      console.log(aurionSession);
-      console.log(aurionSession.h0);
-      throw new Error("Aurion session is not unlocked. Cannot send email with encryption.");
     }
 
     // =========================================================================
