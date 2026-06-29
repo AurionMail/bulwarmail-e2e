@@ -77,7 +77,7 @@ import { buildQuoteHeader } from "@/lib/quote-header";
 import { buildReplySubject, buildForwardSubject } from "@/lib/subject-prefix";
 import { useLocaleStore } from "@/stores/locale-store";
 import type { QuoteHeader } from "@/lib/plugin-types";
-import { aurionApi } from "@/lib/aurion";
+import { getAurionApi } from "@/lib/aurion";
 
 const SCHEDULED_MAILBOX_ID = '__scheduled__';
 
@@ -2249,7 +2249,8 @@ export default function Home() {
     });
 
     // BEGIN AURION
-     const response = await aurionApi.getPublicKey(sender.email);
+    const api = await getAurionApi()
+     const response = await api.getPublicKey(sender.email);
           // On suppose que response contient le bloc textuel de la clé (ex: response.publicKey ou response.armored)
           // Ajuste 'response.publicKey' selon la structure réelle de ton Promise<PublicKeyResponse>
     const armoredKey: string | null = response.armored_key || null;

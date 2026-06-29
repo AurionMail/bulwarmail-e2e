@@ -18,7 +18,7 @@ import { notifyParent } from '@/lib/iframe-bridge';
 import { snapshotAccount, restoreAccount, clearAllStores, evictAccount, evictAll } from '@/lib/account-state-manager';
 import type { Identity } from '@/lib/jmap/types';
 
-import { aurionApi, aurionSession, aurionStorage, runInitialIndexing, verifyAndSyncRouting } from '@/lib/aurion';//AURION
+import { getAurionApi, aurionSession, aurionStorage, runInitialIndexing, verifyAndSyncRouting } from '@/lib/aurion';//AURION
 import type { SecurityMode } from 'aurion-crypto-sdk';// AURION
 import { cryptoWorkerBridge } from '@/lib/aurion/worker-bridge';//AURION
 
@@ -402,6 +402,7 @@ export const useAuthStore = create<AuthState>()(
           // ==========================================
           
           // 1. Récupération des sels de dérivation depuis l'infrastructure Aurion Network
+          const aurionApi = await getAurionApi();
           const salts = await aurionApi.getSalts(username);
 
           // 2. Initialisation du Vault en RAM (calcul de h0)
@@ -410,11 +411,11 @@ export const useAuthStore = create<AuthState>()(
 
           // 3. Récupération / Détermination du mot de passe JMAP effectif
           let jmapPassword = '';
-
+          const authState = await aurionApi.login(username, password, salts.salt_server);
+          aurionApi.setToken(authState.token); // On stocke le token pour les requêtes suivantes
+          await aurionSession.setApiTokenInStorage(authState.token);
           if (securityMode === 'Confort') {
             // Le serveur renvoie les données de session nécessaires (contenant le jeton et l'état)
-            const authState = await aurionApi.login(username, password, salts.salt_server);
-            
             // Extraction de la chaîne chiffrée provenant du backend
             const encryptedMailCreds = (await aurionApi.getServerLogin()).server_password_encrypted;
             
@@ -423,8 +424,6 @@ export const useAuthStore = create<AuthState>()(
 
           } else if (securityMode === 'Parano') {
             // Validation ZKP auprès du serveur Aurion pour authentifier la session
-            await aurionApi.login(username, password, salts.salt_server);
-
             // CORRECTION : Utilisation de notre driver IndexedDB (aurionStorage) à la place de localStorage
             const localCiphertext = await aurionStorage.getItem(`aurion_creds_${username}`);
             
@@ -456,7 +455,6 @@ export const useAuthStore = create<AuthState>()(
             jmapPassword = mailPassword;
 
             // Simple validation ZKP auprès du serveur Aurion pour initialiser le token réseau
-            await aurionApi.login(username, password, salts.salt_server);
           }
 
           // Gestion du TOTP JMAP si applicable sur le mot de passe effectif déchiffré
@@ -478,10 +476,10 @@ export const useAuthStore = create<AuthState>()(
                   aurionSession.h0
                 );
           
-          //
-          //
+          //----------------------------------------------
+          //----------------------------------------------
           //-----------------------END AURION--------------
-          //
+          //------------------------------------------------
           //
 
           // Resolve account/slot info up front so writes can start immediately.
@@ -1508,7 +1506,12 @@ export const useAuthStore = create<AuthState>()(
             // ==========================================
             if (aurionSession.isUnlocked()) {
               try {
+                const aurionApi = await getAurionApi();
+                
+
                 const salts = await aurionApi.getSalts(targetAccount.username);
+                const token = await aurionSession.getApiTokenFromStorage();
+                aurionApi.setToken(token); // On stocke le token pour les requêtes suivantes
                 const keyContainer = await aurionApi.getEncryptedPrivateKey();
                 await aurionSession.decryptAndLoadPrivateKeys(keyContainer.keys, salts.salt_client);
                 debug.log('auth', `Aurion OpenPGP Keyring loaded successfully for ${targetAccount.username}`);

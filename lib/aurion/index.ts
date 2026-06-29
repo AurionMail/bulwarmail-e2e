@@ -1,12 +1,28 @@
 import { AurionApiClient, AurionSession } from 'aurion-crypto-sdk';
 import { AurionIndexedDBDriver } from 'aurion-crypto-sdk';
 import { cryptoWorkerBridge } from './worker-bridge';
-import { configManager } from '@/lib/admin/config-manager';
+import { apiFetch } from '@/lib/browser-navigation';
 
+// Instance partagée (singleton) qui sera créée dynamiquement
+let aurionApiInstance: Promise<AurionApiClient> | null = null;
 
-export const aurionApi = new AurionApiClient(
-  configManager.get<string>('AurionServerUrl', '') || process.env.AURION_SERVER_URL || 'https://api.aurion.com'
-);
+/**
+ * Récupère l'instance de l'API avec la bonne URL configurée au runtime.
+ */
+export async function getAurionApi(): Promise<AurionApiClient> {
+  if (aurionApiInstance) return aurionApiInstance;
+
+  try {
+    // On appelle l'API de config
+    const response = await apiFetch('/api/config');
+    const data = await response.json();
+    
+    return  new AurionApiClient(data?.AurionServerUrl || 'https://api.aurion.com');
+  } catch (error) {
+    console.error("[Aurion API] Échec du chargement de la config, fallback sur l'URL par défaut", error);
+    return  new AurionApiClient('https://api.aurion.com');
+  }
+}
 
 // On exporte le driver pour pouvoir faire des getItem / setItem directement dans les stores de l'app
 export const aurionStorage = new AurionIndexedDBDriver();
@@ -106,7 +122,8 @@ export async function verifyAndSyncRouting(): Promise<void> {
 
   try {
     console.log('[Routing Sync] Analyse de l\'état des alias et groupes...');
-    const syncState = await aurionApi.syncRouting();
+    const api = await getAurionApi();
+    const syncState =  await api.syncRouting();
     let hasGeneratedKeys = false;
     for (const identity of syncState.identities) {
       
@@ -130,7 +147,7 @@ export async function verifyAndSyncRouting(): Promise<void> {
         });
 
         // Envoi des enveloppes générées à l'API Go
-        await aurionApi.uploadSynchronizedKeys(uploadPayload);
+        await api.uploadSynchronizedKeys(uploadPayload);
         console.log(`[Routing Sync] Clés partagées et publiées avec succès pour : ${identity.email}`);
         hasGeneratedKeys = true;
       }

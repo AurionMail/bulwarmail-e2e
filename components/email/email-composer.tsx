@@ -1,6 +1,6 @@
 "use client";
 
-import { aurionApi } from "@/lib/aurion"; //AURION
+import { getAurionApi } from "@/lib/aurion"; //AURION
 import { ShieldAlert, Shield } from "lucide-react";//AURION
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -2036,7 +2036,8 @@ useEffect(() => {
     if (keyCache[email] !== undefined) return; // Déjà traité, on ignore
 
     try {
-      const response = await aurionApi.getPublicKey(email);
+      const api = await getAurionApi()
+      const response = await api.getPublicKey(email);
       // On suppose que response contient le bloc textuel de la clé (ex: response.publicKey ou response.armored)
       // Ajuste 'response.publicKey' selon la structure réelle de ton Promise<PublicKeyResponse>
       const armoredKey = response.armored_key || null; 
