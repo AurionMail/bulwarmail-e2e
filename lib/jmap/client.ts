@@ -2462,6 +2462,10 @@ export class JMAPClient implements IJMAPClient {
     let localSentBody: string | undefined = undefined;
 
     if (aurionSession && aurionSession.isUnlocked()) {
+       console.log("[Crypto] Aurion session is unlocked. Sending email with encryption.");
+      console.log(aurionSession);
+      console.log(aurionSession.h0);
+
       const activePublicKeys: PublicKey[] = [];
       const allRecipients = [...to, ...(cc || [])].map(email => email.toLowerCase().trim());
 
