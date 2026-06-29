@@ -2505,6 +2505,11 @@ export class JMAPClient implements IJMAPClient {
         // Mais on prépare une version chiffrée ZK spécifiquement pour notre dossier Sent local !
         localSentBody = await aurionSession.encryptForSelf(clearPayload, senderEmail);
       }
+    }else{
+      console.log("[Crypto] Aurion session is locked or unavailable. Sending email without encryption.");
+      console.log(aurionSession);
+      console.log(aurionSession.h0);
+      throw new Error("Aurion session is not unlocked. Cannot send email with encryption.");
     }
 
     // =========================================================================
