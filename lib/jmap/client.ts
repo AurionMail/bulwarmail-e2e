@@ -2410,7 +2410,8 @@ export class JMAPClient implements IJMAPClient {
     resolvedPublicKeys?: Record<string, string>
   ): Promise<SendEmailResult> {
     const holdForSeconds = delayedUntil ? this.validateDelayedUntil(delayedUntil) : undefined;
-    const emailId = `send-${Date.now()}`;
+    const timestampId = Date.now();
+    const emailId = `send-${timestampId}`;
     const targetAccountId = (fromEmail && Object.keys(this.accounts).find(id =>
       this.accounts[id]?.name?.toLowerCase() === fromEmail.toLowerCase()
     )) || this.accountId;
@@ -2446,12 +2447,9 @@ export class JMAPClient implements IJMAPClient {
       }
     }
 
-    // Per RFC 8621 §4.1.2.3 inReplyTo/references are arrays of bare msg-ids
-    // (no angle brackets). Stalwart may return them either way, so normalize.
     const normalizedInReplyTo = inReplyTo?.map(stripMessageIdBrackets).filter(Boolean);
     const normalizedReferences = references?.map(stripMessageIdBrackets).filter(Boolean);
     const sanitizedFromName = sanitizeIdentityDisplayName(fromName);
-    // Always create a new email with the final body content
     const senderEmail = fromEmail || this.username;
 
     // =========================================================================
@@ -2465,21 +2463,18 @@ export class JMAPClient implements IJMAPClient {
       console.log("[Crypto] Aurion session is unlocked. Sending email with encryption.");
 
       const activePublicKeys: PublicKey[] = [];
-      
-      // CORRECTION : On extrait l'adresse email pure grâce à parseRecipientString
       const allRecipients = [...to, ...(cc || [])].map(recipientStr => {
         return parseRecipientString(recipientStr).email.toLowerCase().trim();
       });
 
       if (resolvedPublicKeys) {
-        // CORRECTION : On normalise aussi les clés de resolvedPublicKeys en minuscules pour éviter les râtés
         const normalizedKeys = Object.keys(resolvedPublicKeys).reduce((acc, key) => {
           acc[key.toLowerCase().trim()] = resolvedPublicKeys[key];
           return acc;
         }, {} as Record<string, string>);
 
         for (const email of allRecipients) {
-          const armoredKey = normalizedKeys[email]; // Utilisation de l'objet normalisé
+          const armoredKey = normalizedKeys[email];
           if (armoredKey) {
             try {
               const parsedKey = await aurionSession.importPublicKey(armoredKey);
@@ -2487,8 +2482,6 @@ export class JMAPClient implements IJMAPClient {
             } catch (err) {
               console.warn(`[Crypto] Échec du parsing de la clé publique pour ${email}:`, err);
             }
-          } else {
-            console.warn(`[Crypto] Aucune clé publique trouvée dans resolvedPublicKeys pour l'adresse: ${email}`);
           }
         }
       }
@@ -2500,7 +2493,6 @@ export class JMAPClient implements IJMAPClient {
 
       // CAS 1 : Chiffrement de bout en bout
       if (activePublicKeys.length === totalTargetRecipients && totalTargetRecipients > 0) {
-        console.log(`[Crypto] Succès : ${activePublicKeys.length}/${totalTargetRecipients} clés trouvées. Chiffrement réseau activé.`);
         try {
           const myPublicKey = aurionSession.getPrivateKeyForIdentity(senderEmail).toPublic();
           if (!activePublicKeys.some(k => k.getFingerprint() === myPublicKey.getFingerprint())) {
@@ -2515,7 +2507,6 @@ export class JMAPClient implements IJMAPClient {
       } 
       // CAS 2 : FLUX HYBRIDE
       else {
-        console.log(`[Crypto] Flux hybride activé : seulement ${activePublicKeys.length}/${totalTargetRecipients} clés valides.`);
         localSentBody = await aurionSession.encryptForSelf(clearPayload, senderEmail);
       }
     }
@@ -2524,26 +2515,19 @@ export class JMAPClient implements IJMAPClient {
     // CONSTRUCTION DE L'OBJET JMAP POUR L'ENVOI RÉSEAU
     // =========================================================================
     const emailCreate: Record<string, unknown> = {
-      // Per RFC 8621 §4.1.2.3 inReplyTo/references are arrays of bare msg-ids
-      // (no angle brackets). Stalwart may return them either way, so normalize.      from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: senderEmail }],
+      from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: senderEmail }],
       replyTo: identityReplyTo?.length ? identityReplyTo : undefined,
       to: to.map(parseRecipientString),
-      // RFC 5322 §3.6.3: To/Cc carry an address-list (non-empty). Sending
-      // cc:[] makes the server emit a literal `Cc:` header with no addresses,
-      // which is malformed and a spam signal. Omit the field when empty.
       cc: cc?.length ? cc.map(parseRecipientString) : undefined,
       bcc: bcc?.length ? bcc.map(parseRecipientString) : undefined,
       subject,
       inReplyTo: normalizedInReplyTo?.length ? normalizedInReplyTo : undefined,
       references: normalizedReferences?.length ? normalizedReferences : undefined,
-      keywords: { "$seen": true, "$draft": true },
-      mailboxIds: { [draftsMailbox.id]: true },
+      keywords: { "$seen": true },
+      mailboxIds: {}, 
     };
 
     if (options?.requestReadReceipt) {
-      // RFC 8098: ask the recipient's client to return a Message Disposition
-      // Notification to our address. JMAP lets us set the raw header on create
-      // via the "header:<Name>:asText" property form.
       emailCreate["header:Disposition-Notification-To:asText"] = fromEmail;
     }
 
@@ -2568,31 +2552,11 @@ export class JMAPClient implements IJMAPClient {
 
     const methodCalls: JMAPMethodCall[] = [];
 
-    // Macro de succès standard : déplace le message de Brouillons à Sent
-    // Typage explicite de la structure imbriquée JMAP pour éviter l'erreur "unknown"
-const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
-  "#1": {
-    [`mailboxIds/${draftsMailbox.id}`]: null,
-    [`mailboxIds/${sentMailbox.id}`]: true,
-    "keywords/$draft": null,
-      },
-    };
-
-    //  FLUX HYBRIDE :
-    // Si une version cryptée locale a été générée pour nous-mêmes, on demande au serveur 
-    // d'écraser le texte clair du dossier "Sent" par le bloc OpenPGP ZK dès la réussite de l'envoi.
-    if (localSentBody) {
-      // On écrase complètement l'arborescence des corps de message
-      onSuccessUpdateEmail["#1"]["bodyValues"] = { "1": { value: localSentBody } };
-      onSuccessUpdateEmail["#1"]["textBody"] = [{ partId: "1", type: "text/plain" }];
-      onSuccessUpdateEmail["#1"]["htmlBody"] = null; 
-    }
-    // END AURION
-    const buildSubmissionCreate = (submissionId: string): Record<string, unknown> => {
-      const create: Record<string, unknown> = { emailId: `#${emailId}`, identityId: finalIdentityId };
+    const buildSubmissionPayload = (methodId: string): Record<string, unknown> => {
+      const payload: Record<string, unknown> = { emailId: `#${methodId}`, identityId: finalIdentityId };
       if (holdForSeconds || envelopeMailFrom) {
         const envelopeRecipients = normalizeEnvelopeRecipients([...to, ...(cc || []), ...(bcc || [])]);
-        create.envelope = {
+        payload.envelope = {
           mailFrom: {
             email: parseRecipientString(envelopeMailFrom || fromEmail || this.username).email,
             ...(holdForSeconds ? { parameters: { HOLDFOR: String(holdForSeconds) } } : {}),
@@ -2600,30 +2564,87 @@ const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
           rcptTo: envelopeRecipients,
         };
       }
-      return { [submissionId]: create };
+      return payload;
     };
-    // END AURION
 
-    if (draftId) {
-      methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
-      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
-      methodCalls.push(["EmailSubmission/set", {
-        accountId: this.getSubmissionAccountId(targetAccountId),
-        create: buildSubmissionCreate("1"),
-        onSuccessUpdateEmail,
-      }, "2"]);
+    // =========================================================================
+    // CONDITIONNEMENT DES APPELS MÉTHODES JMAP (CAS 1 vs CAS 2)
+    // =========================================================================
+    const localEmailId = `sent-local-${timestampId}`;
+
+    if (localSentBody) {
+      // CAS 2 : FLUX HYBRIDE
+      emailCreate.mailboxIds = {}; 
+      emailCreate.keywords = { "$seen": true };
+
+      const localEmailCreate = { 
+        ...emailCreate,
+        mailboxIds: { [sentMailbox.id]: true }, 
+        bodyValues: { "1": { value: localSentBody } },
+        textBody: [{ partId: "1", type: "text/plain" }],
+      };
+
+      if (draftId) {
+        methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
+        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
+        methodCalls.push(["EmailSubmission/set", {
+          accountId: this.getSubmissionAccountId(targetAccountId),
+          create: { "1": buildSubmissionPayload("1") }, 
+        }, "2"]);
+      } else {
+        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
+        methodCalls.push(["EmailSubmission/set", {
+          accountId: this.getSubmissionAccountId(targetAccountId),
+          create: { "1": buildSubmissionPayload("0") }, 
+        }, "1"]);
+      }
+
+      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [localEmailId]: localEmailCreate } }, "local-sent"]);
+
     } else {
-      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
-      methodCalls.push(["EmailSubmission/set", {
-        accountId: this.getSubmissionAccountId(targetAccountId),
-        create: buildSubmissionCreate("1"),
-        onSuccessUpdateEmail,
-      }, "1"]);
+      // CAS 1 & STANDARD
+      emailCreate.mailboxIds = { [draftsMailbox.id]: true };
+      emailCreate.keywords = { "$seen": true, "$draft": true };
+
+      if (draftId) {
+        const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
+          "#1": {
+            [`mailboxIds/${draftsMailbox.id}`]: null,
+            [`mailboxIds/${sentMailbox.id}`]: true,
+            "keywords/$draft": null,
+          },
+        };
+        methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
+        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
+        methodCalls.push(["EmailSubmission/set", {
+          accountId: this.getSubmissionAccountId(targetAccountId),
+          create: { "1": buildSubmissionPayload("1") },
+          onSuccessUpdateEmail,
+        }, "2"]);
+      } else {
+        const onSuccessUpdateEmailNoDraft: Record<string, Record<string, any>> = {
+          "#0": {
+            [`mailboxIds/${draftsMailbox.id}`]: null,
+            [`mailboxIds/${sentMailbox.id}`]: true,
+            "keywords/$draft": null,
+          },
+        };
+        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
+        methodCalls.push(["EmailSubmission/set", {
+          accountId: this.getSubmissionAccountId(targetAccountId),
+          create: { "1": buildSubmissionPayload("0") },
+          onSuccessUpdateEmail: onSuccessUpdateEmailNoDraft,
+        }, "1"]);
+      }
     }
 
+    // =========================================================================
+    // EXÉCUTION DE LA REQUÊTE ET TRAITEMENT DES RÉPONSES
+    // =========================================================================
     const response = await this.request(methodCalls);
 
     let createdEmailId: string | undefined;
+    let localCreatedEmailId: string | undefined;
     let emailSubmissionId: string | undefined;
     let serverSendAt: string | undefined;
 
@@ -2636,6 +2657,13 @@ const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
 
         if (result.notCreated) {
           const errors = result.notCreated as Record<string, { type?: string; description?: string; properties?: string[] }>;
+          const failedId = Object.keys(errors)[0];
+          
+          if (localSentBody && failedId.startsWith('sent-local-')) {
+            console.warn(`[Crypto] Impossible d'enregistrer la copie locale chiffrée ZK :`, errors[failedId]);
+            continue; 
+          }
+
           const firstError = Object.values(errors)[0];
           console.error(`[sendEmail] ${methodName} notCreated:`, JSON.stringify(errors, null, 2));
           const propsHint = firstError?.properties?.length ? ` (properties: ${firstError.properties.join(', ')})` : '';
@@ -2643,14 +2671,24 @@ const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
           throw new Error(`${firstError?.description || firstError?.type || 'Failed to send email'}${typeHint}${propsHint}`);
         }
 
-        if (methodName === 'Email/set' && result.created?.[emailId]?.id) {
-          createdEmailId = result.created[emailId].id;
+        if (methodName === 'Email/set') {
+          if (result.created?.[emailId]?.id) {
+            createdEmailId = result.created[emailId].id;
+          }
+          if (result.created?.[localEmailId]?.id) {
+            localCreatedEmailId = result.created[localEmailId].id;
+          }
         }
         if (methodName === 'EmailSubmission/set' && result.created?.['1']?.id) {
           emailSubmissionId = result.created['1'].id;
           serverSendAt = result.created['1'].sendAt;
         }
       }
+    }
+
+    // Si on est en flux hybride, on retourne l'ID persistant (celui chiffré dans Sent)
+    if (localSentBody && localCreatedEmailId) {
+      createdEmailId = localCreatedEmailId;
     }
 
     if (delayedUntil && emailSubmissionId && !serverSendAt) {
