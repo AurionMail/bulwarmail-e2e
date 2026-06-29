@@ -2577,7 +2577,7 @@ export class JMAPClient implements IJMAPClient {
       emailCreate.mailboxIds = { [draftsMailbox.id]: true }; 
       emailCreate.keywords = { "$seen": true, "$draft": true };
 
-      // Déstructuration sécurisée pour éliminer proprement htmlBody et éviter les erreurs TypeScript/Stalwart
+      // Déstructuration pour éliminer proprement htmlBody (évite l'erreur TypeScript/Stalwart)
       const { htmlBody: _ignoredHtmlBody, ...emailCreateWithoutHtml } = emailCreate;
 
       const localEmailCreate = { 
@@ -2595,16 +2595,12 @@ export class JMAPClient implements IJMAPClient {
           accountId: this.getSubmissionAccountId(targetAccountId),
           create: { "1": buildSubmissionPayload("1") }, 
         }, "2"]);
-        
-        methodCalls.push(["Email/set", { accountId: targetAccountId, destroy: ["#1"] }, "3"]);
       } else {
         methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
         methodCalls.push(["EmailSubmission/set", {
           accountId: this.getSubmissionAccountId(targetAccountId),
           create: { "1": buildSubmissionPayload("0") }, 
         }, "1"]);
-        
-        methodCalls.push(["Email/set", { accountId: targetAccountId, destroy: ["#0"] }, "2"]);
       }
 
       methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [localEmailId]: localEmailCreate } }, "local-sent"]);
@@ -2692,6 +2688,16 @@ export class JMAPClient implements IJMAPClient {
           serverSendAt = result.created['1'].sendAt;
         }
       }
+    }
+
+    // =========================================================================
+    // NETTOYAGE EN ARRIÈRE-PLAN DU MAIL VOLATIL (CAS 2)
+    // =========================================================================
+    // On détruit le mail en clair de manière asynchrone pour ne pas perturber la transaction principale
+    if (localSentBody && createdEmailId && createdEmailId !== localCreatedEmailId) {
+      this.request([
+        ["Email/set", { accountId: targetAccountId, destroy: [createdEmailId] }, "cleanup"]
+      ]).catch(err => console.warn("[sendEmail] Échec du nettoyage du mail volatil:", err));
     }
 
     if (localSentBody && localCreatedEmailId) {
