@@ -2574,12 +2574,16 @@ export class JMAPClient implements IJMAPClient {
 
     if (localSentBody) {
       // CAS 2 : FLUX HYBRIDE
-      emailCreate.mailboxIds = {}; 
-      emailCreate.keywords = { "$seen": true };
+      emailCreate.mailboxIds = { [draftsMailbox.id]: true }; 
+      emailCreate.keywords = { "$seen": true, "$draft": true };
+
+      // Déstructuration sécurisée pour éliminer proprement htmlBody et éviter les erreurs TypeScript/Stalwart
+      const { htmlBody: _ignoredHtmlBody, ...emailCreateWithoutHtml } = emailCreate;
 
       const localEmailCreate = { 
-        ...emailCreate,
+        ...emailCreateWithoutHtml,
         mailboxIds: { [sentMailbox.id]: true }, 
+        keywords: { "$seen": true },
         bodyValues: { "1": { value: localSentBody } },
         textBody: [{ partId: "1", type: "text/plain" }],
       };
@@ -2591,12 +2595,16 @@ export class JMAPClient implements IJMAPClient {
           accountId: this.getSubmissionAccountId(targetAccountId),
           create: { "1": buildSubmissionPayload("1") }, 
         }, "2"]);
+        
+        methodCalls.push(["Email/set", { accountId: targetAccountId, destroy: ["#1"] }, "3"]);
       } else {
         methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
         methodCalls.push(["EmailSubmission/set", {
           accountId: this.getSubmissionAccountId(targetAccountId),
           create: { "1": buildSubmissionPayload("0") }, 
         }, "1"]);
+        
+        methodCalls.push(["Email/set", { accountId: targetAccountId, destroy: ["#0"] }, "2"]);
       }
 
       methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [localEmailId]: localEmailCreate } }, "local-sent"]);
@@ -2686,7 +2694,6 @@ export class JMAPClient implements IJMAPClient {
       }
     }
 
-    // Si on est en flux hybride, on retourne l'ID persistant (celui chiffré dans Sent)
     if (localSentBody && localCreatedEmailId) {
       createdEmailId = localCreatedEmailId;
     }
