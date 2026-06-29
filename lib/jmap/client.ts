@@ -2568,87 +2568,55 @@ export class JMAPClient implements IJMAPClient {
     };
 
     // =========================================================================
-    // CONDITIONNEMENT DES APPELS MÉTHODES JMAP (CAS 1 vs CAS 2)
+    // CONDITIONNEMENT DES APPELS MÉTHODES JMAP
     // =========================================================================
-    const localEmailId = `sent-local-${timestampId}`;
-
     if (localSentBody) {
-      // CAS 2 : FLUX HYBRIDE
+      // CAS 2 : FLUX HYBRIDE -> Mail réseau en clair mis dans Drafts
       emailCreate.mailboxIds = { [draftsMailbox.id]: true }; 
       emailCreate.keywords = { "$seen": true, "$draft": true };
-
-      // Déstructuration pour éliminer proprement htmlBody (évite l'erreur TypeScript/Stalwart)
-      const { htmlBody: _ignoredHtmlBody, ...emailCreateWithoutHtml } = emailCreate;
-
-      const localEmailCreate = { 
-        ...emailCreateWithoutHtml,
-        mailboxIds: { [sentMailbox.id]: true }, 
-        keywords: { "$seen": true },
-        bodyValues: { "1": { value: localSentBody } },
-        textBody: [{ partId: "1", type: "text/plain" }],
-      };
-
-      if (draftId) {
-        methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
-        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
-        methodCalls.push(["EmailSubmission/set", {
-          accountId: this.getSubmissionAccountId(targetAccountId),
-          create: { "1": buildSubmissionPayload("1") }, 
-        }, "2"]);
-      } else {
-        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
-        methodCalls.push(["EmailSubmission/set", {
-          accountId: this.getSubmissionAccountId(targetAccountId),
-          create: { "1": buildSubmissionPayload("0") }, 
-        }, "1"]);
-      }
-
-      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [localEmailId]: localEmailCreate } }, "local-sent"]);
-
     } else {
       // CAS 1 & STANDARD
       emailCreate.mailboxIds = { [draftsMailbox.id]: true };
       emailCreate.keywords = { "$seen": true, "$draft": true };
+    }
 
-      if (draftId) {
-        const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
-          "#1": {
-            [`mailboxIds/${draftsMailbox.id}`]: null,
-            [`mailboxIds/${sentMailbox.id}`]: true,
-            "keywords/$draft": null,
-          },
-        };
-        methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
-        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
-        methodCalls.push(["EmailSubmission/set", {
-          accountId: this.getSubmissionAccountId(targetAccountId),
-          create: { "1": buildSubmissionPayload("1") },
-          onSuccessUpdateEmail,
-        }, "2"]);
-      } else {
-        const onSuccessUpdateEmailNoDraft: Record<string, Record<string, any>> = {
-          "#0": {
-            [`mailboxIds/${draftsMailbox.id}`]: null,
-            [`mailboxIds/${sentMailbox.id}`]: true,
-            "keywords/$draft": null,
-          },
-        };
-        methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
-        methodCalls.push(["EmailSubmission/set", {
-          accountId: this.getSubmissionAccountId(targetAccountId),
-          create: { "1": buildSubmissionPayload("0") },
-          onSuccessUpdateEmail: onSuccessUpdateEmailNoDraft,
-        }, "1"]);
-      }
+    if (draftId) {
+      const onSuccessUpdateEmail: Record<string, Record<string, any>> = {
+        "#1": {
+          [`mailboxIds/${draftsMailbox.id}`]: null,
+          [`mailboxIds/${sentMailbox.id}`]: true,
+          "keywords/$draft": null,
+        },
+      };
+      methodCalls.push(["Email/set", { accountId: this.accountId, destroy: [draftId] }, "0"]);
+      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "1"]);
+      methodCalls.push(["EmailSubmission/set", {
+        accountId: this.getSubmissionAccountId(targetAccountId),
+        create: { "1": buildSubmissionPayload("1") },
+        ...(localSentBody ? {} : { onSuccessUpdateEmail }), // Pas d'auto-move dans Sent pour le flux hybride
+      }, "2"]);
+    } else {
+      const onSuccessUpdateEmailNoDraft: Record<string, Record<string, any>> = {
+        "#0": {
+          [`mailboxIds/${draftsMailbox.id}`]: null,
+          [`mailboxIds/${sentMailbox.id}`]: true,
+          "keywords/$draft": null,
+        },
+      };
+      methodCalls.push(["Email/set", { accountId: targetAccountId, create: { [emailId]: emailCreate } }, "0"]);
+      methodCalls.push(["EmailSubmission/set", {
+        accountId: this.getSubmissionAccountId(targetAccountId),
+        create: { "1": buildSubmissionPayload("0") },
+        ...(localSentBody ? {} : { onSuccessUpdateEmail: onSuccessUpdateEmailNoDraft }),
+      }, "1"]);
     }
 
     // =========================================================================
-    // EXÉCUTION DE LA REQUÊTE ET TRAITEMENT DES RÉPONSES
+    // EXÉCUTION DE LA REQUÊTE PRINCIPALE (ENVOI RÉSEAU)
     // =========================================================================
     const response = await this.request(methodCalls);
 
     let createdEmailId: string | undefined;
-    let localCreatedEmailId: string | undefined;
     let emailSubmissionId: string | undefined;
     let serverSendAt: string | undefined;
 
@@ -2661,13 +2629,6 @@ export class JMAPClient implements IJMAPClient {
 
         if (result.notCreated) {
           const errors = result.notCreated as Record<string, { type?: string; description?: string; properties?: string[] }>;
-          const failedId = Object.keys(errors)[0];
-          
-          if (localSentBody && failedId.startsWith('sent-local-')) {
-            console.warn(`[Crypto] Impossible d'enregistrer la copie locale chiffrée ZK :`, errors[failedId]);
-            continue; 
-          }
-
           const firstError = Object.values(errors)[0];
           console.error(`[sendEmail] ${methodName} notCreated:`, JSON.stringify(errors, null, 2));
           const propsHint = firstError?.properties?.length ? ` (properties: ${firstError.properties.join(', ')})` : '';
@@ -2679,9 +2640,6 @@ export class JMAPClient implements IJMAPClient {
           if (result.created?.[emailId]?.id) {
             createdEmailId = result.created[emailId].id;
           }
-          if (result.created?.[localEmailId]?.id) {
-            localCreatedEmailId = result.created[localEmailId].id;
-          }
         }
         if (methodName === 'EmailSubmission/set' && result.created?.['1']?.id) {
           emailSubmissionId = result.created['1'].id;
@@ -2691,17 +2649,36 @@ export class JMAPClient implements IJMAPClient {
     }
 
     // =========================================================================
-    // NETTOYAGE EN ARRIÈRE-PLAN DU MAIL VOLATIL (CAS 2)
+    // ACTIONS POST-ENVOI (POUR LE FLUX HYBRIDE UNIQUEMENT)
     // =========================================================================
-    // On détruit le mail en clair de manière asynchrone pour ne pas perturber la transaction principale
-    if (localSentBody && createdEmailId && createdEmailId !== localCreatedEmailId) {
-      this.request([
-        ["Email/set", { accountId: targetAccountId, destroy: [createdEmailId] }, "cleanup"]
-      ]).catch(err => console.warn("[sendEmail] Échec du nettoyage du mail volatil:", err));
-    }
+    if (localSentBody && createdEmailId) {
+      const localEmailId = `sent-local-${timestampId}`;
+      
+      // 1. On sépare complètement la structure de l'objet pour la copie locale
+      const { htmlBody: _ignoredHtmlBody, ...emailCreateWithoutHtml } = emailCreate;
+      const localEmailCreate = { 
+        ...emailCreateWithoutHtml,
+        mailboxIds: { [sentMailbox.id]: true }, 
+        keywords: { "$seen": true },
+        bodyValues: { "1": { value: localSentBody } },
+        textBody: [{ partId: "1", type: "text/plain" }],
+      };
 
-    if (localSentBody && localCreatedEmailId) {
-      createdEmailId = localCreatedEmailId;
+      // 2. Lancement de la DEUXIÈME REQUÊTE HTTP (Enregistrement chiffré + Nettoyage du clair)
+      try {
+        const sideChannelResponse = await this.request([
+          ["Email/set", { accountId: targetAccountId, create: { [localEmailId]: localEmailCreate } }, "local-create"],
+          ["Email/set", { accountId: targetAccountId, destroy: [createdEmailId] }, "local-cleanup"]
+        ]);
+
+        // On intercepte le nouvel ID de la copie locale chiffrée pour le retourner à l'UI
+        const localSetResult = sideChannelResponse.methodResponses?.find(([name]) => name === 'Email/set');
+        if (localSetResult && localSetResult[1]?.created?.[localEmailId]?.id) {
+          createdEmailId = localSetResult[1].created[localEmailId].id;
+        }
+      } catch (sideErr) {
+        console.warn("[Crypto] Échec des opérations de synchronisation locale hybride:", sideErr);
+      }
     }
 
     if (delayedUntil && emailSubmissionId && !serverSendAt) {
