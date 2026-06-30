@@ -1485,6 +1485,8 @@ export const useAuthStore = create<AuthState>()(
               }
             } catch (err) {
               console.debug(`[AUTH INVESTIGATION] Erreur capturée : logout forcé pour l'account ${account.id} :`, err);
+              // attendre 1 minute
+              await new Promise(resolve => setTimeout(resolve, 60000));
               debug.error(`Failed to restore account ${account.id}:`, err);
               if (isRateLimitError(err)) {
                 accountStore.updateAccount(account.id, {
