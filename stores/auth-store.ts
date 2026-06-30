@@ -1474,6 +1474,8 @@ export const useAuthStore = create<AuthState>()(
                 const res = await apiFetch(`/api/auth/session?slot=${account.cookieSlot}`, { method: 'PUT' });
                 if (res.ok) {
                   const { serverUrl, username, password } = await res.json();
+                  console.debug(`[AUTH INVESTIGATION] analyse des valeurs de retour : serverUrl=${serverUrl}, username=${username}, password=${password}`);
+                  // Si mot de passe pas bon ou correspond à celui d'aurion, faire une fonction de stokage du mot de passe chiffré
                   const client = new JMAPClient(serverUrl, username, password);
                   bindClientStatusHandlers(client, set, get, account.id);
                   await client.connect();
