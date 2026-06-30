@@ -1468,6 +1468,7 @@ export const useAuthStore = create<AuthState>()(
                     console.debug(`[AUTH INVESTIGATION] Erreur : Aurion Vault hardware key missing or corrupted in IndexedDB for account ${account.id} : can't lock`);
                     throw new Error("Aurion Vault hardware key missing or corrupted in IndexedDB.");
                   }
+                  console.debug(`[AUTH INVESTIGATION] semble unlocked`);
                 }
                 //==========================================
                 const res = await apiFetch(`/api/auth/session?slot=${account.cookieSlot}`, { method: 'PUT' });
@@ -1487,6 +1488,7 @@ export const useAuthStore = create<AuthState>()(
               console.debug(`[AUTH INVESTIGATION] Erreur capturée : logout forcé pour l'account ${account.id} :`, err);
               // attendre 1 minute
               await new Promise(resolve => setTimeout(resolve, 60000));
+               console.debug(`[AUTH INVESTIGATION] on y va logout forcé pour l'account ${account.id} :`, err);
               debug.error(`Failed to restore account ${account.id}:`, err);
               if (isRateLimitError(err)) {
                 accountStore.updateAccount(account.id, {
