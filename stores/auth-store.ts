@@ -1365,6 +1365,7 @@ export const useAuthStore = create<AuthState>()(
         // 1. BEGIN AURION : SÉCURITÉ DES MODES VOLATILES (RAM SÉCHÉE APRÈS F5)
         // ==========================================
         const currentSecurityMode = get().securityMode;
+        console.debug(`[AUTH INVESTIGATION] Current security mode: ${currentSecurityMode}`);
         
         // Si on est en mode Parano/Extreme et que l'état crypto en RAM est mort (F5)
         if ((currentSecurityMode === 'Parano' || currentSecurityMode === 'Extreme') && !aurionSession.isUnlocked()) {
@@ -1440,6 +1441,7 @@ export const useAuthStore = create<AuthState>()(
 
             try {
               if (account.authMode === 'oauth') {
+                console.debug(`[AUTH INVESTIGATION] Account Mode = oauth, attempting token refresh for account ${account.id}`);
                 const res = await apiFetch(`/api/auth/token?slot=${account.cookieSlot}`, { method: 'PUT' });
                 if (res.ok) {
                   const { access_token, expires_in } = await res.json();
@@ -1458,9 +1460,12 @@ export const useAuthStore = create<AuthState>()(
                 // ==========================================
                 // 2. BEGIN AURION : AUTO-UNLOCK INTERNE (Mode Confort)
                 // ==========================================
+                console.debug(`[AUTH INVESTIGATION] Current security mode: ${currentSecurityMode}`);
                 if (currentSecurityMode === 'Confort' && !aurionSession.isUnlocked()) {
+                  console.debug(`[AUTH INVESTIGATION] Trying to auto-unlock Aurion Vault for account ${account.id}`);
                   const isVaultUnlocked = await aurionSession.tryAutoUnlock();
                   if (!isVaultUnlocked) {
+                    console.debug(`[AUTH INVESTIGATION] Erreur : Aurion Vault hardware key missing or corrupted in IndexedDB for account ${account.id} : can't lock`);
                     throw new Error("Aurion Vault hardware key missing or corrupted in IndexedDB.");
                   }
                 }
@@ -1479,6 +1484,7 @@ export const useAuthStore = create<AuthState>()(
                 }
               }
             } catch (err) {
+              console.debug(`[AUTH INVESTIGATION] Erreur capturée : logout forcé pour l'account ${account.id} :`, err);
               debug.error(`Failed to restore account ${account.id}:`, err);
               if (isRateLimitError(err)) {
                 accountStore.updateAccount(account.id, {
@@ -1505,6 +1511,7 @@ export const useAuthStore = create<AuthState>()(
             // 3. ANCHOR AURION : REMONTAGE DU KEYRING PGP DE L'UTILISATEUR ACTIF
             // ==========================================
             if (aurionSession.isUnlocked()) {
+              console.debug(`[AUTH INVESTIGATION] tentative de chargement du keyring PGP pour l'utilisateur ${targetAccount.username}`);
               try {
                 const aurionApi = await getAurionApi();
                 
