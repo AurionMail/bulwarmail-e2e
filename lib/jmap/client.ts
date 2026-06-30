@@ -1053,6 +1053,59 @@ export class JMAPClient implements IJMAPClient {
     }
   }
 
+  // =========================================================================
+  // AURION HELPER INTERNE : Normalisation JMAP post-déchiffrement (Aurion)
+  // =========================================================================
+  private normalizeDecryptedEmail(email: any): any {
+    if (!email || !email.bodyValues) return email;
+
+    // On cherche la valeur textuelle déchiffrée (généralement sous la clé "1" ou "text")
+    const partId = email.textBody?.[0]?.partId || "1";
+    const rawValue = email.bodyValues[partId]?.value;
+
+    if (!rawValue) return email;
+
+    // 1. Détection et nettoyage de l'ancien format (MIME fait maison)
+    const hasOldMimeHeader = /^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i.test(rawValue);
+    const isHtml = hasOldMimeHeader || /<[a-z][\s\S]*>/i.test(rawValue);
+
+    if (isHtml) {
+      // Extraction du HTML pur sans le header si c'est un ancien mail
+      const cleanHtml = hasOldMimeHeader 
+        ? rawValue.replace(/^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i, "")
+        : rawValue;
+
+      // Création d'une version texte épurée pour l'aperçu et le Plain Text
+      const cleanText = cleanHtml
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      // 2. Reconstruction de l'objet JMAP pour forcer le client à faire un rendu HTML
+      email.htmlBody = [{ partId: "html", type: "text/html" }];
+      email.textBody = [{ partId: "text", type: "text/plain" }];
+      
+      email.bodyValues = {
+        "html": { value: cleanHtml },
+        "text": { value: cleanText }
+      };
+
+      // Évite que les balises HTML ou les en-têtes polluent l'aperçu de la liste des messages
+      if (cleanText) {
+        email.preview = cleanText.substring(0, 256);
+      }
+    } else if (hasOldMimeHeader) {
+      // Cas de repli ultra-rare où le header était présent mais sans balises
+      const cleanText = rawValue.replace(/^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i, "");
+      email.bodyValues[partId].value = cleanText;
+      email.preview = cleanText.substring(0, 256);
+    }
+
+    return email;
+  }
+
   async getEmails(mailboxId?: string, accountId?: string, limit: number = 50, position: number = 0, hasKeyword?: string): Promise<{ emails: Email[], hasMore: boolean, total: number }> {
     try {
       const targetAccountId = accountId || this.accountId;
@@ -1100,7 +1153,10 @@ export class JMAPClient implements IJMAPClient {
         // AURION : Déchiffrement transparent du lot (Previews/Sujets)
         const decryptedEmails = await cryptoWorkerBridge.processMailBatchAsync(emails);
 
-        return { emails: decryptedEmails, hasMore, total };
+        // AURION NORMALISATION : Restructuration de chaque mail du lot pour corriger l'affichage des listes
+        const normalizedEmails = decryptedEmails.map((email: any) => this.normalizeDecryptedEmail(email));
+
+        return { emails: normalizedEmails, hasMore, total };
         // END AURION
       }
 
@@ -1210,11 +1266,14 @@ export class JMAPClient implements IJMAPClient {
       const [decryptedEmail] = await cryptoWorkerBridge.processMailBatchAsync([email]);
       if (!decryptedEmail) return null;
 
-      if (decryptedEmail.headers) {
-        await this.parseEmailHeaders(decryptedEmail);
+      // AURION NORMALISATION : Restructuration locale du JMAP déchiffré
+      const normalizedEmail = this.normalizeDecryptedEmail(decryptedEmail);
+
+      if (normalizedEmail.headers) {
+        await this.parseEmailHeaders(normalizedEmail);
       }
 
-      return decryptedEmail;
+      return normalizedEmail;
       // END AURION
     } catch (error) {
       console.error('Failed to get email:', error);
@@ -2325,21 +2384,53 @@ export class JMAPClient implements IJMAPClient {
     }
 
     const sanitizedFromName = sanitizeIdentityDisplayName(fromName);
+    const senderEmail = fromEmail || this.username;
+
+    // =========================================================================
+    // BEGIN AURION : Chiffrement du Brouillon pour Soi-même (ZK)
+    // =========================================================================
+    let draftBody = body;
+    let isEncrypted = false;
+
+    if (aurionSession && aurionSession.isUnlocked()) {
+      console.log("[Crypto] Aurion session is unlocked. Encrypting draft for self.");
+      
+      //  NETTOYAGE : On chiffre le HTML pur s'il existe, sans injecter de faux headers textuels
+      const clearPayload = htmlBody ? htmlBody : body;
+
+      try {
+        draftBody = await aurionSession.encryptForSelf(clearPayload, senderEmail);
+        isEncrypted = true;
+      } catch (err) {
+        console.warn("[Crypto] Échec du chiffrement local du brouillon, repli sur le texte brut:", err);
+      }
+    }
+
+    // =========================================================================
+    // 🏗️ CONSTRUCTION DE L'OBJET JMAP CONFORME À STALWART
+    // =========================================================================
     const emailData: EmailDraft = {
-      from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: fromEmail || this.username }],
+      from: [{ name: sanitizedFromName || "", email: senderEmail }], // Blinde le champ 'from' pour Stalwart
       to: to.map(email => ({ email })),
       cc: cc?.length ? cc.map(email => ({ email })) : undefined,
       bcc: bcc?.length ? bcc.map(email => ({ email })) : undefined,
-      subject,
+      subject: subject || "",
       keywords: { "$seen": true, "$draft": true },
       mailboxIds: { [draftsMailbox.id]: true },
-      bodyValues: htmlBody
-        ? { "text": { value: body }, "html": { value: htmlBody } }
-        : { "1": { value: body } },
-      textBody: htmlBody
-        ? [{ partId: "text", type: "text/plain" }]
-        : [{ partId: "1" }],
-      ...(htmlBody ? { htmlBody: [{ partId: "html", type: "text/html" }] } : {}),
+      
+      // Si chiffré : injection exclusive du bloc PGP dans la part textuelle unique
+      bodyValues: isEncrypted
+        ? { "1": { value: draftBody } }
+        : (htmlBody 
+            ? { "text": { value: body }, "html": { value: htmlBody } }
+            : { "1": { value: body } }),
+            
+      textBody: isEncrypted
+        ? [{ partId: "1", type: "text/plain" }]
+        : (htmlBody ? [{ partId: "text", type: "text/plain" }] : [{ partId: "1" }]),
+        
+      // Ne jamais envoyer de structure htmlBody si le contenu global est armuré en PGP Text
+      ...(isEncrypted ? {} : (htmlBody ? { htmlBody: [{ partId: "html", type: "text/html" }] } : {})),
     };
 
     if (attachments?.length) {
@@ -2486,9 +2577,8 @@ export class JMAPClient implements IJMAPClient {
         }
       }
 
-      const clearPayload = htmlBody 
-        ? `Content-Type: text/html; charset=utf-8\r\n\r\n${htmlBody}`
-        : body;
+      // NETTOYAGE : On chiffre directement la charge utile HTML pure si elle est disponible
+      const clearPayload = htmlBody ? htmlBody : body;
       const totalTargetRecipients = to.length + (cc?.length || 0);
 
       // CAS 1 : Chiffrement de bout en bout
@@ -2515,7 +2605,7 @@ export class JMAPClient implements IJMAPClient {
     // CONSTRUCTION DE L'OBJET JMAP POUR L'ENVOI RÉSEAU
     // =========================================================================
     const emailCreate: Record<string, unknown> = {
-      from: [{ ...(sanitizedFromName ? { name: sanitizedFromName } : {}), email: senderEmail }],
+      from: [{ name: sanitizedFromName || "", email: senderEmail }], // Sécurise la structure 'from'
       replyTo: identityReplyTo?.length ? identityReplyTo : undefined,
       to: to.map(parseRecipientString),
       cc: cc?.length ? cc.map(parseRecipientString) : undefined,
