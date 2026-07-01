@@ -1084,14 +1084,15 @@ export class JMAPClient implements IJMAPClient {
   } {
     const result = { text: "", html: "", attachments: [] as any[] };
 
-    // 1. Trouver tous les boundaries uniques dans le document
-   const boundaryMatches = mimeText.match(/boundary="([^"]+)"/gi) || mimeText.match(/boundary=([a-zA-Z0-9'+_-]+)/gi);
-    if (!boundaryMatches) {
-      // Cas d'un e-mail ultra-simple sans structure multipart déchiffrée
+    // 1. Extraction chirurgicale du TOUT PREMIER boundary défini dans ce bloc précis
+    const headerPart = mimeText.substring(0, Math.max(2000, mimeText.search(/\r?\n\r?\n/)));
+    const boundaryMatch = headerPart.match(/boundary="([^"]+)"/i) || headerPart.match(/boundary=([a-zA-Z0-9'+_-]+)/i);
+    
+    if (!boundaryMatch) {
+      // Pas de multipart à ce niveau, on extrait directement le corps après les en-têtes
       const doubleNewLineIdx = mimeText.search(/\r?\n\r?\n/);
       const bodyBlock = doubleNewLineIdx !== -1 ? mimeText.substring(doubleNewLineIdx).trim() : mimeText;
-      
-      if (mimeText.includes("text/html")) {
+      if (mimeText.toLowerCase().includes("text/html")) {
         result.html = bodyBlock;
       } else {
         result.text = bodyBlock;
@@ -1099,53 +1100,55 @@ export class JMAPClient implements IJMAPClient {
       return result;
     }
 
-    // Extraire les chaînes de caractères pures des boundaries uniques
-    const boundaries = boundaryMatches.map(m => m.replace(/boundary=/i, "").replace(/"/g, "").trim());
+    const boundary = boundaryMatch[1];
+    const delimiter = `--${boundary}`;
+    const closeDelimiter = `--${boundary}--`;
 
-    // On utilise le premier boundary principal pour découper les blocs majeurs
-    const mainBoundary = boundaries[0];
-    const parts = mimeText.split(new RegExp(`--${mainBoundary}`, "g"));
+    const lines = mimeText.split(/\r?\n/);
+    
+    let inSection = false;
+    let headerMode = true;
+    let rawHeaders: string[] = [];
+    let currentBodyLines: string[] = [];
 
-    for (const part of parts) {
-      const trimmedPart = part.trim();
-      // On ignore les blocs vides ou le marqueur de fin de message MIME (--)
-      if (!trimmedPart || trimmedPart === "--" || trimmedPart.startsWith("--")) continue;
+    // Traitement logique d'une section MIME isolée
+    const processSection = () => {
+      if (rawHeaders.length === 0) return;
 
-      //  CORRECTION FIX 2 : Séparation étanche des en-têtes et du corps via indexOf (Évite le split sauvage)
-      const matchNewLine = trimmedPart.match(/\r?\n\r?\n/);
-      if (!matchNewLine || matchNewLine.index === undefined) continue;
-      
-      const headersBlock = trimmedPart.substring(0, matchNewLine.index);
-      let bodyBlock = trimmedPart.substring(matchNewLine.index + matchNewLine[0].length);
+      // Unfold des headers (Rassemblement des lignes coupées par des espaces/tabulations)
+      const unfoldedHeaders: string[] = [];
+      for (const line of rawHeaders) {
+        if ((line.startsWith(" ") || line.startsWith("\t")) && unfoldedHeaders.length > 0) {
+          unfoldedHeaders[unfoldedHeaders.length - 1] += " " + line.trim();
+        } else {
+          unfoldedHeaders.push(line);
+        }
+      }
 
-      // Déterminer le type de contenu de la partie
+      const headersBlock = unfoldedHeaders.join("\n");
+      const bodyBlock = currentBodyLines.join("\n");
+
       const contentTypeMatch = headersBlock.match(/Content-Type:\s*([^;\r\n]+)/i);
       const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase().trim() : "";
+      const isAttachment = headersBlock.match(/Content-Disposition:\s*attachment/i) !== null;
 
       if (contentType.includes("multipart/")) {
-        //  Récursion : Si une sous-partie est un sous-multipart, on descend dedans
+        // Récursion hermétique : le sous-bloc analysera son propre sous-boundary
         const subResult = this.parseLocalMimeString(bodyBlock);
-        if (subResult.text) result.text += subResult.text;
-        if (subResult.html) result.html += subResult.html;
+        if (subResult.text) result.text += (result.text ? "\n" : "") + subResult.text;
+        if (subResult.html) result.html += (result.html ? "<br>" : "") + subResult.html;
         if (subResult.attachments.length > 0) result.attachments.push(...subResult.attachments);
       } 
-      else if (contentType.includes("text/plain") && !headersBlock.includes("attachment")) {
+      else if (contentType.includes("text/plain") && !isAttachment) {
         result.text += (result.text ? "\n" : "") + bodyBlock.trim();
       } 
-      else if (contentType.includes("text/html") && !headersBlock.includes("attachment")) {
+      else if (contentType.includes("text/html") && !isAttachment) {
         result.html += (result.html ? "<br>" : "") + bodyBlock.trim();
       } 
       else {
-        //  C'est une véritable pièce jointe (image/png, application/pdf, etc.)
+        // 📂 C'est une pièce jointe valide
         const filenameMatch = headersBlock.match(/filename="([^"]+)"/i) || headersBlock.match(/name="([^"]+)"/i);
-        const filename = filenameMatch ? filenameMatch[1] : `pj_unnamed`;
-
-        //  CORRECTION FIX 1 : Nettoyage drastique de la fin de chaîne pour éliminer les résidus de boundaries
-        // On supprime tout ce qui commence par un tiret après la base64 pour éviter de polluer atob()
-        const trailingBoundaryIdx = bodyBlock.search(/\r?\n--/);
-        if (trailingBoundaryIdx !== -1) {
-          bodyBlock = bodyBlock.substring(0, trailingBoundaryIdx);
-        }
+        const filename = filenameMatch ? filenameMatch[1] : `piece_jointe`;
 
         result.attachments.push({
           name: filename,
@@ -1153,6 +1156,44 @@ export class JMAPClient implements IJMAPClient {
           base64Data: bodyBlock.trim(),
           size: bodyBlock.trim().length
         });
+      }
+    };
+
+    for (const line of lines) {
+      // 💡 CORRECTION SÉCURITÉ : On nettoie les espaces blancs de fin de ligne (comme \r) 
+      // pour éviter que le test de correspondance stricte du délimiteur échoue.
+      const cleanLine = line.trimEnd();
+      
+      // On teste d'abord le cas le plus restrictif (le marqueur de fermeture --boundary--)
+      const isClose = cleanLine === closeDelimiter;
+      const isDelim = isClose || cleanLine === delimiter;
+      
+      if (isDelim) {
+        if (inSection) {
+          processSection(); // On clôture la section courante
+        }
+        
+        inSection = true;
+        headerMode = true;
+        rawHeaders = [];
+        currentBodyLines = [];
+        
+        if (isClose) {
+          break; // Sortie immédiate du niveau de multipart courant
+        }
+        continue;
+      }
+
+      if (!inSection) continue;
+
+      if (headerMode) {
+        if (line === "") {
+          headerMode = false; // Transition vers le corps de la section
+        } else {
+          rawHeaders.push(line);
+        }
+      } else {
+        currentBodyLines.push(line);
       }
     }
 
