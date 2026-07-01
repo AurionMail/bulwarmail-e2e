@@ -62,7 +62,7 @@
     "otpauth": "^9.5.0",
     "pdfjs-dist": "^6.0.227",
     "pkijs": "^3.4.0",
-    "postal-mime": "^2.7.4",
+    "postal-mime": "^2.7.5",
     "pvtsutils": "^1.3.6",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",

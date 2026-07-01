@@ -7,6 +7,7 @@ import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
 import { cryptoWorkerBridge } from "@/lib/aurion/worker-bridge";// AURION
 import { aurionSession } from "@/lib/aurion";// AURION
 import { PublicKey } from 'openpgp';//AURION 
+import PostalMime from 'postal-mime';//AURION
 
 /** Parse a recipient string that may be "Name <email>" or bare "email" into { name?, email }. */
 function parseRecipientString(s: string): { name?: string; email: string } {
@@ -1073,260 +1074,122 @@ export class JMAPClient implements IJMAPClient {
     }
   }
 
-  // =========================================================================
-  // AURION HELPER INTERNE : Normalisation JMAP post-déchiffrement (Aurion)
-  // =========================================================================
-  // =========================================================================
-  private parseLocalMimeString(mimeText: string): { 
-    text: string; 
-    html: string; 
-    attachments: Array<{ name: string; type: string; base64Data: string; size: number }> 
-  } {
-    const result = { text: "", html: "", attachments: [] as any[] };
 
-    // 1. Extraction chirurgicale du TOUT PREMIER boundary défini dans ce bloc précis
-    const headerPart = mimeText.substring(0, Math.max(2000, mimeText.search(/\r?\n\r?\n/)));
-    const boundaryMatch = headerPart.match(/boundary="([^"]+)"/i) || headerPart.match(/boundary=([a-zA-Z0-9'+_-]+)/i);
-    
-    if (!boundaryMatch) {
-      // Pas de multipart à ce niveau, on extrait directement le corps après les en-têtes
-      const doubleNewLineIdx = mimeText.search(/\r?\n\r?\n/);
-      const bodyBlock = doubleNewLineIdx !== -1 ? mimeText.substring(doubleNewLineIdx).trim() : mimeText;
-      if (mimeText.toLowerCase().includes("text/html")) {
-        result.html = bodyBlock;
-      } else {
-        result.text = bodyBlock;
-      }
-      return result;
+
+  private async parseLocalMimeString(mimeText: string) {
+  const parser = new PostalMime();
+  const email = await parser.parse(mimeText);
+
+  // Helper performant et robuste pour normaliser en Uint8Array
+  const contentToUint8Array = (content: string | ArrayBuffer | Uint8Array): Uint8Array => {
+    if (content instanceof Uint8Array) {
+      return content;
     }
-
-    const boundary = boundaryMatch[1];
-    const delimiter = `--${boundary}`;
-    const closeDelimiter = `--${boundary}--`;
-
-    const lines = mimeText.split(/\r?\n/);
-    
-    let inSection = false;
-    let headerMode = true;
-    let rawHeaders: string[] = [];
-    let currentBodyLines: string[] = [];
-
-    // Traitement logique d'une section MIME isolée
-    const processSection = () => {
-      if (rawHeaders.length === 0) return;
-
-      // Unfold des headers (Rassemblement des lignes coupées par des espaces/tabulations)
-      const unfoldedHeaders: string[] = [];
-      for (const line of rawHeaders) {
-        if ((line.startsWith(" ") || line.startsWith("\t")) && unfoldedHeaders.length > 0) {
-          unfoldedHeaders[unfoldedHeaders.length - 1] += " " + line.trim();
-        } else {
-          unfoldedHeaders.push(line);
-        }
+    if (content instanceof ArrayBuffer) {
+      return new Uint8Array(content);
+    }
+    if (typeof content === 'string') {
+      // Cas rare où le parser renvoie une string pour un contenu binaire
+      const binaryString = unescape(encodeURIComponent(content));
+      const uint8 = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        uint8[i] = binaryString.charCodeAt(i);
       }
+      return uint8;
+    }
+    return new Uint8Array();
+  };
 
-      const headersBlock = unfoldedHeaders.join("\n");
-      const bodyBlock = currentBodyLines.join("\n");
+  return {
+    text: email.text || "",
+    html: email.html || "",
+    attachments: email.attachments.map(att => {
+      const content = att.content;
+      const uint8Data = content ? contentToUint8Array(content) : new Uint8Array();
 
-      const contentTypeMatch = headersBlock.match(/Content-Type:\s*([^;\r\n]+)/i);
-      const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase().trim() : "";
-      const isAttachment = headersBlock.match(/Content-Disposition:\s*attachment/i) !== null;
+      return {
+        name: att.filename || "piece_jointe",
+        type: att.mimeType || "application/octet-stream",
+        rawData: uint8Data, // On stocke le binaire brut ici au lieu du Base64
+        size: uint8Data.length
+      };
+    })
+  };
+}
 
-      if (contentType.includes("multipart/")) {
-        // Récursion hermétique : le sous-bloc analysera son propre sous-boundary
-        const subResult = this.parseLocalMimeString(bodyBlock);
-        if (subResult.text) result.text += (result.text ? "\n" : "") + subResult.text;
-        if (subResult.html) result.html += (result.html ? "<br>" : "") + subResult.html;
-        if (subResult.attachments.length > 0) result.attachments.push(...subResult.attachments);
-      } 
-      else if (contentType.includes("text/plain") && !isAttachment) {
-        result.text += (result.text ? "\n" : "") + bodyBlock.trim();
-      } 
-      else if (contentType.includes("text/html") && !isAttachment) {
-        result.html += (result.html ? "<br>" : "") + bodyBlock.trim();
-      } 
-      else {
-        // 📂 C'est une pièce jointe valide
-        const filenameMatch = headersBlock.match(/filename="([^"]+)"/i) || headersBlock.match(/name="([^"]+)"/i);
-        const filename = filenameMatch ? filenameMatch[1] : `piece_jointe`;
+// =========================================================================
+// AURION HELPER : Normalisation JMAP (Appel async)
+// =========================================================================
+private async normalizeDecryptedEmail(email: any): Promise<Email> {
+  if (!email || !email.bodyValues) return email;
 
-        result.attachments.push({
-          name: filename,
-          type: contentType || "application/octet-stream",
-          base64Data: bodyBlock.trim(),
-          size: bodyBlock.trim().length
-        });
-      }
+  let rawValue = email.bodyValues["mime-heavy-payload"]?.value;
+  if (!rawValue) {
+    const partId = email.textBody?.[0]?.partId || "1";
+    rawValue = email.bodyValues[partId]?.value;
+  }
+
+  if (!rawValue) return email;
+
+  try {
+    console.log("[AURION-UI] Parsing avec PostalMime...");
+    const parsedMime = await this.parseLocalMimeString(rawValue);
+
+    // Évite la mutation directe de l'objet d'origine (shallow copy)
+    const normalizedEmail = {
+      ...email,
+      textBody: [],
+      htmlBody: [],
+      bodyValues: {},
+      attachments: [],
+      hasAttachment: false
     };
 
-    for (const line of lines) {
-      // 💡 CORRECTION SÉCURITÉ : On nettoie les espaces blancs de fin de ligne (comme \r) 
-      // pour éviter que le test de correspondance stricte du délimiteur échoue.
-      const cleanLine = line.trimEnd();
-      
-      // On teste d'abord le cas le plus restrictif (le marqueur de fermeture --boundary--)
-      const isClose = cleanLine === closeDelimiter;
-      const isDelim = isClose || cleanLine === delimiter;
-      
-      if (isDelim) {
-        if (inSection) {
-          processSection(); // On clôture la section courante
-        }
+    let partCounter = 1;
+
+    // Injection texte/html
+    if (parsedMime.text) {
+      const id = `text-${partCounter++}`;
+      normalizedEmail.textBody.push({ partId: id, type: "text/plain" });
+      normalizedEmail.bodyValues[id] = { value: parsedMime.text };
+      normalizedEmail.preview = parsedMime.text.substring(0, 256);
+    }
+    if (parsedMime.html) {
+      const id = `html-${partCounter++}`;
+      normalizedEmail.htmlBody.push({ partId: id, type: "text/html" });
+      normalizedEmail.bodyValues[id] = { value: parsedMime.html };
+    }
+
+    // Injection pièces jointes
+    if (parsedMime.attachments.length > 0) {
+      normalizedEmail.hasAttachment = true;
+      normalizedEmail.attachments = parsedMime.attachments.map((att, index) => {
+        const id = `att-${index}`;
         
-        inSection = true;
-        headerMode = true;
-        rawHeaders = [];
-        currentBodyLines = [];
-        
-        if (isClose) {
-          break; // Sortie immédiate du niveau de multipart courant
-        }
-        continue;
-      }
+        // Création directe du Blob depuis le Uint8Array sans repasser par atob/btoa
+        // On cast en ArrayBufferView pour satisfaire la signature du constructeur de Blob
+        const blob = new Blob([att.rawData as any], { type: att.type });
+        const localBlobUrl = URL.createObjectURL(blob);
 
-      if (!inSection) continue;
-
-      if (headerMode) {
-        if (line === "") {
-          headerMode = false; // Transition vers le corps de la section
-        } else {
-          rawHeaders.push(line);
-        }
-      } else {
-        currentBodyLines.push(line);
-      }
+        return {
+          id: id,
+          partId: id,
+          blobId: localBlobUrl, // ⚠️ Pense à appeler URL.revokeObjectURL(url) au unmount du composant de lecture
+          size: att.size,
+          name: att.name,
+          type: att.type,
+          disposition: "attachment"
+        };
+      });
     }
 
-    return result;
-  }
-
-  private normalizeDecryptedEmail(email: any): any {
-    if (!email || !email.bodyValues) return email;
-
-    // Récupération du payload injecté par getEmail
-    let rawValue = email.bodyValues["mime-heavy-payload"]?.value;
-    let isFromMimeHeavy = true;
-
-    if (!rawValue) {
-      isFromMimeHeavy = false;
-      const partId = email.textBody?.[0]?.partId || "1";
-      rawValue = email.bodyValues[partId]?.value;
-    }
-
-    if (!rawValue) return email;
-
-    const isStandardMime = /^(Content-Type|MIME-Version|--)/i.test(rawValue.trim());
-
-    if (isStandardMime) {
-      console.log("[AURION-UI] Format PGP/MIME global validé. Lancement du parser...");
-      try {
-        const parsedMime = this.parseLocalMimeString(rawValue);
-
-        // Réinitialisation complète des conteneurs JMAP
-        email.textBody = [];
-        email.htmlBody = [];
-        email.bodyValues = {};
-        email.attachments = [];
-        email.hasAttachment = false;
-
-        let partCounter = 1;
-
-        // Injection du texte brut déballé
-        if (parsedMime.text) {
-          const id = `text-${partCounter++}`;
-          email.textBody.push({ partId: id, type: "text/plain" });
-          email.bodyValues[id] = { value: parsedMime.text };
-          email.preview = parsedMime.text.substring(0, 256).replace(/\s+/g, ' ');
-        }
-
-        // Injection du HTML déballé
-        if (parsedMime.html) {
-          const id = `html-${partCounter++}`;
-          email.htmlBody.push({ partId: id, type: "text/html" });
-          email.bodyValues[id] = { value: parsedMime.html };
-          
-          if (!email.preview) {
-            const cleanPreview = parsedMime.html
-              .replace(/<style[\s\S]*?<\/style>/gi, "")
-              .replace(/<[^>]*>/g, " ")
-              .replace(/\s+/g, " ")
-              .trim();
-            email.preview = cleanPreview.substring(0, 256);
-          }
-        }
-
-        // Injection des pièces jointes converties en ObjectURLs locaux
-        // Injection des pièces jointes converties en ObjectURLs locaux
-        if (parsedMime.attachments && parsedMime.attachments.length > 0) {
-          // 💡 LOG DE VERIFICATION
-          console.log(`[AURION-UI] 📦 Pièces jointes extraites du MIME brut:`, parsedMime.attachments.map(a => ({ name: a.name, size: a.base64Data?.length })));
-          
-          email.hasAttachment = true;
-          email.attachments = parsedMime.attachments.map((att, index) => {
-            const id = `att-${index}`;
-
-            // Nettoyage de sécurité des caractères invisibles ou sauts de lignes internes à la base64 RFC
-            const cleanBase64 = att.base64Data.replace(/[^A-Za-z0-9+/=]/g, "");
-            
-            const byteCharacters = atob(cleanBase64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: att.type });
-            const localBlobUrl = URL.createObjectURL(blob);
-
-            // 💡 On fournit un objet ultra-complet pour forcer l'UI JMAP à l'afficher
-            return {
-              id: id,                  // Parfois l'UI cherche .id au lieu de .partId
-              partId: id,
-              blobId: localBlobUrl,
-              size: byteArray.length,  // Taille réelle calculée à partir du binaire décodé
-              name: att.name || `fichier_${id}`,
-              type: att.type,
-              disposition: "attachment", // Indique strictement à l'UI que c'est un fichier téléchargeable
-              isInline: false           // Force l'UI à ne pas la cacher sous prétexte que c'est une image
-            };
-          });
-
-          // 💡 DEUXIÈME LOG DE VÉRIFICATION
-          console.log(`[AURION-UI] ✅ email.attachments finalisé pour l'UI:`, email.attachments);
-        } else {
-          console.log(`[AURION-UI] ⚠️ Aucune pièce jointe détectée par le parser dans ce mail.`);
-        }
-
-        return email;
-      } catch (e) {
-        console.error("[AURION] Échec critique du parsing PGP/MIME standard:", e);
-      }
-    }
-
-    // Fallback Inline (Rétrocompatibilité)
-    const hasOldMimeHeader = /^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i.test(rawValue);
-    const isHtml = hasOldMimeHeader || /<[a-z][\s\S]*>/i.test(rawValue);
-
-    if (isHtml) {
-      const cleanHtml = hasOldMimeHeader ? rawValue.replace(/^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i, "") : rawValue;
-      const cleanText = cleanHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-
-      email.htmlBody = [{ partId: "html", type: "text/html" }];
-      email.textBody = [{ partId: "text", type: "text/plain" }];
-      email.bodyValues = { "html": { value: cleanHtml }, "text": { value: cleanText } };
-      if (cleanText) email.preview = cleanText.substring(0, 256);
-    } else if (hasOldMimeHeader) {
-      const cleanText = rawValue.replace(/^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i, "");
-      if (!isFromMimeHeavy) {
-        const originalPartId = email.textBody?.[0]?.partId || "1";
-        email.bodyValues[originalPartId].value = cleanText;
-      }
-      email.preview = cleanText.substring(0, 256);
-    }
-
+    return normalizedEmail;
+  } catch (e) {
+    console.error("[AURION] Erreur critique parsing PostalMime:", e);
     return email;
   }
-  // END AURION =====
-// END AURION =====
+}
+
   async getEmails(mailboxId?: string, accountId?: string, limit: number = 50, position: number = 0, hasKeyword?: string): Promise<{ emails: Email[], hasMore: boolean, total: number }> {
     try {
       const targetAccountId = accountId || this.accountId;
@@ -1375,7 +1238,10 @@ export class JMAPClient implements IJMAPClient {
         const decryptedEmails = await cryptoWorkerBridge.processMailBatchAsync(emails);
 
         // AURION NORMALISATION : Restructuration de chaque mail du lot pour corriger l'affichage des listes
-        const normalizedEmails = decryptedEmails.map((email: any) => this.normalizeDecryptedEmail(email));
+        
+        const normalizedEmails = await Promise.all(
+          decryptedEmails.map(async (e) => await this.normalizeDecryptedEmail(e))
+        );
 
         return { emails: normalizedEmails, hasMore, total };
         // END AURION
@@ -1450,6 +1316,7 @@ export class JMAPClient implements IJMAPClient {
     }
   }
 
+
   async getEmail(emailId: string, accountId?: string): Promise<Email | null> {
     try {
       const targetAccountId = accountId || this.accountId;
@@ -1486,8 +1353,6 @@ export class JMAPClient implements IJMAPClient {
       // =========================================================================
       // INTERCEPTION AURION : Téléchargement du bloc chiffré PGP/MIME
       // =========================================================================
-      // CRITICAL : On cherche STRICTEMENT le fichier contenant les données (encrypted.asc)
-      // et on ignore la pièce jointe technique "Version: 1" (qui a souvent le type application/pgp-encrypted)
       const encryptedAttachment = email.attachments?.find(
         (att: any) => att.name === 'encrypted.asc' || 
                       (att.type === 'application/octet-stream' && att.name?.endsWith('.asc'))
@@ -1496,38 +1361,31 @@ export class JMAPClient implements IJMAPClient {
       if (encryptedAttachment) {
         console.log("[AURION] Détection du vrai fichier chiffré PGP/MIME:", encryptedAttachment.name);
         try {
-          // 1. Récupération du fichier binaire .asc stocké sur Stalwart
           const encryptedBlob = await this.fetchBlob(encryptedAttachment.blobId, encryptedAttachment.name, encryptedAttachment.type);
           const encryptedText = await encryptedBlob.text();
 
           console.log("[AURION] Payload récupéré. Longueur réelle:", encryptedText?.length);
 
-          // 2. Injection artificielle dans bodyValues pour forcer le Worker à le voir
           if (!email.bodyValues) email.bodyValues = {};
           email.bodyValues["mime-heavy-payload"] = { value: encryptedText, isTruncated: false };
-          
-          // 3. On fait pointer textBody sur notre clé personnalisée
           email.textBody = [{ partId: "mime-heavy-payload", type: "text/plain" }];
         } catch (blobError) {
           console.error("[AURION] Impossible de récupérer le blob chiffré d'origine :", blobError);
         }
       }
-      // =========================================================================
-      // =========================================================================
 
-      //  AURION : Déchiffrement lourd du corps du message via le Web Worker
+      // AURION : Déchiffrement lourd du corps du message via le Web Worker
       const [decryptedEmail] = await cryptoWorkerBridge.processMailBatchAsync([email]);
       if (!decryptedEmail) return null;
 
-      //  AURION NORMALISATION : Restructuration locale du JMAP déchiffré
-      const normalizedEmail = this.normalizeDecryptedEmail(decryptedEmail);
+      // AURION NORMALISATION : Restructuration locale du JMAP déchiffré
+      const normalizedEmail = await this.normalizeDecryptedEmail(decryptedEmail);
 
       if (normalizedEmail.headers) {
         await this.parseEmailHeaders(normalizedEmail);
       }
 
       return normalizedEmail;
-      // END AURION
     } catch (error) {
       console.error('Failed to get email:', error);
       return null;
