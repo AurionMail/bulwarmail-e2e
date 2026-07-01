@@ -32,54 +32,60 @@ self.onmessage = async (event) => {
     try {
       const { emails } = data;
       const processedEmails = [];
-      const indexUpdates = []; // Pour notifier l'UI des nouveaux tokens extraits
+      const indexUpdates = []; 
 
       for (const email of emails) {
         const processedEmail = { ...email };
         let clearTextBody: string | null = null;
 
-        // 1. Déchiffrement du corps des messages (getEmail)
         if (processedEmail.bodyValues) {
           const updatedBodyValues: Record<string, EmailBodyValue> = { ...processedEmail.bodyValues };
           let isDecrypted = false;
 
           for (const partId in updatedBodyValues) {
             const bodyValue = updatedBodyValues[partId];
-            
-            if (bodyValue && bodyValue.value.includes('-----BEGIN PGP MESSAGE-----')) {
+            if (!bodyValue) continue;
+
+            // Détection 1 : Format Inline (Ancien)
+            const isInlinePGP = bodyValue.value.includes('-----BEGIN PGP MESSAGE-----');
+            // Détection 2 : Format PGP/MIME (Nouveau proxy) - La valeur contient l'enveloppe ou le bloc brut
+            const isPgpMime = bodyValue.value.includes('application/pgp-encrypted') || 
+                              bodyValue.value.includes('encrypted.asc');
+
+            if (isInlinePGP || isPgpMime) {
+              // Déchiffrement du bloc complet (OpenPGP.js sait extraire le PGP d'un flux texte MIME ou brut)
               clearTextBody = await workerSession.decryptCiphertext(bodyValue.value, processedEmail.accountLabel);
               
+              // On remplace la valeur par le texte brut DECHIFFRE (qui contient le sous-MIME ou le texte clair)
               updatedBodyValues[partId] = {
                 ...bodyValue,
                 value: clearTextBody,
                 isTruncated: false
               };
               isDecrypted = true;
-            } else if (bodyValue && !bodyValue.value.includes('-----BEGIN PGP MESSAGE-----')) {
-              // Gère le cas où le mail est déjà en clair (re-consultation)
+            } else {
+              // Gère le cas où le mail est déjà en clair
               clearTextBody = bodyValue.value;
             }
           }
           
           if (isDecrypted) {
             processedEmail.bodyValues = updatedBodyValues;
+            // On extrait une preview temporaire sécurisée (sera affinée par le normalizer)
             const bodyParts = Object.values(updatedBodyValues) as EmailBodyValue[];
             const mainTextPart = bodyParts[0]?.value || '';
             processedEmail.preview = mainTextPart.slice(0, 200).replace(/\s+/g, ' ') + '...';
           }
         }
 
-        // 💡 ALIMENTATION DE L'INDEX LOCAL DU WORKER SI UN TEXTE CLAIR EST DISPONIBLE
+        // ALIMENTATION DE L'INDEX LOCAL DU WORKER
         if (clearTextBody) {
-          // Indexation en RAM côté Worker
           workerSession.searchEngine.indexMail(processedEmail.id, [], clearTextBody);
-          
-          // On prépare le token payload pour le remonter à l'UI
           const tokens = workerSession.extractSearchTokens(clearTextBody);
           indexUpdates.push({ id: processedEmail.id, tokens });
         }
 
-        // 2. Déchiffrement des métadonnées de liste (preview / subject)
+        // 2. Déchiffrement des métadonnées de liste (preview / subject) si elles sont Inline
         if (processedEmail.preview && processedEmail.preview.includes('-----BEGIN PGP MESSAGE-----')) {
           try {
             processedEmail.preview = await workerSession.decryptCiphertext(processedEmail.preview, processedEmail.accountLabel);
@@ -99,7 +105,6 @@ self.onmessage = async (event) => {
         processedEmails.push(processedEmail);
       }
 
-      // On renvoie les emails déchiffrés ET les structures de tokens à l'UI
       self.postMessage({ 
         id, 
         success: true, 
@@ -148,9 +153,6 @@ self.onmessage = async (event) => {
   
   }
 
-
-
-// aurion-worker.ts
 
 if (action === 'GENERATE_AND_SHARE_KEYS') {
   try {
