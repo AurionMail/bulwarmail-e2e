@@ -1194,31 +1194,42 @@ export class JMAPClient implements IJMAPClient {
       }
 
       // 5. Injection des vraies pièces jointes converties en Blob URLs locaux
+      // À insérer à l'étape 5 (Injection des pièces jointes) de normalizeDecryptedEmail dans client.ts :
       if (parsedMime.attachments && parsedMime.attachments.length > 0) {
+        console.log(`[AURION-UI] 📂 Reconstruction de ${parsedMime.attachments.length} pièces jointes détectées...`);
         email.hasAttachment = true;
         email.attachments = parsedMime.attachments.map((att, index) => {
           const id = `att-${index}`;
+          console.log(`[AURION-UI]   -> Traitement du fichier: ${att.name} (${att.type}), taille Base64 brute: ${att.base64Data?.length}`);
 
-          // Décodage Base64 -> Données Binaires -> Blob HTML5 local
-          const byteCharacters = atob(att.base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          try {
+            // SÉCURITÉ : Nettoyage drastique des caractères de contrôle parasites ou espaces avant le atob
+            const cleanBase64 = att.base64Data.replace(/[^A-Za-z0-9+/=]/g, "");
+            
+            console.log(`[AURION-UI]   -> Taille Base64 après nettoyage regex: ${cleanBase64.length}`);
+            
+            const byteCharacters = atob(cleanBase64); // C'est cette fonction qui jette l'erreur
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: att.type });
+            const localBlobUrl = URL.createObjectURL(blob);
+
+            return {
+              partId: id,
+              blobId: localBlobUrl,
+              size: att.size,
+              name: att.name || `fichier_${id}`,
+              type: att.type,
+              disposition: "attachment"
+            };
+          } catch (atobError) {
+            console.error(`[AURION-UI]  Erreur fatale atob() sur la pièce jointe ${att.name}:`, atobError);
+            console.log("[AURION-UI] Extrait de la base64 fautive:", att.base64Data?.substring(0, 200));
+            throw atobError;
           }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: att.type });
-          
-          // L'URL locale réutilisable directement par le gestionnaire de téléchargement du webmail
-          const localBlobUrl = URL.createObjectURL(blob);
-
-          return {
-            partId: id,
-            blobId: localBlobUrl, // Remplace le blobId JMAP du serveur pour un usage instantané hors-ligne
-            size: att.size,
-            name: att.name || `fichier_${id}`,
-            type: att.type,
-            disposition: "attachment"
-          };
         });
       }
 
