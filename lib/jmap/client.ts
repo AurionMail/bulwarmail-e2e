@@ -1215,8 +1215,11 @@ export class JMAPClient implements IJMAPClient {
         }
 
         // Injection des pièces jointes converties en ObjectURLs locaux
+        // Injection des pièces jointes converties en ObjectURLs locaux
         if (parsedMime.attachments && parsedMime.attachments.length > 0) {
-          console.log(`[AURION-UI] Mapping de ${parsedMime.attachments.length} pièces jointes.`);
+          // 💡 LOG DE VERIFICATION
+          console.log(`[AURION-UI] 📦 Pièces jointes extraites du MIME brut:`, parsedMime.attachments.map(a => ({ name: a.name, size: a.base64Data?.length })));
+          
           email.hasAttachment = true;
           email.attachments = parsedMime.attachments.map((att, index) => {
             const id = `att-${index}`;
@@ -1233,15 +1236,23 @@ export class JMAPClient implements IJMAPClient {
             const blob = new Blob([byteArray], { type: att.type });
             const localBlobUrl = URL.createObjectURL(blob);
 
+            // 💡 On fournit un objet ultra-complet pour forcer l'UI JMAP à l'afficher
             return {
+              id: id,                  // Parfois l'UI cherche .id au lieu de .partId
               partId: id,
               blobId: localBlobUrl,
-              size: att.size || byteArray.length,
+              size: byteArray.length,  // Taille réelle calculée à partir du binaire décodé
               name: att.name || `fichier_${id}`,
               type: att.type,
-              disposition: "attachment"
+              disposition: "attachment", // Indique strictement à l'UI que c'est un fichier téléchargeable
+              isInline: false           // Force l'UI à ne pas la cacher sous prétexte que c'est une image
             };
           });
+
+          // 💡 DEUXIÈME LOG DE VÉRIFICATION
+          console.log(`[AURION-UI] ✅ email.attachments finalisé pour l'UI:`, email.attachments);
+        } else {
+          console.log(`[AURION-UI] ⚠️ Aucune pièce jointe détectée par le parser dans ce mail.`);
         }
 
         return email;
