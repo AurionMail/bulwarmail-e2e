@@ -28,26 +28,33 @@ self.onmessage = async (event) => {
   }
 
   // --- TRAITEMENT DU FLUX ENTRANT (GETEMAIL / GETEMAILS) ---
-  // --- TRAITEMENT DU FLUX ENTRANT (GETEMAIL / GETEMAILS) ---
   if (action === 'DECRYPT_BATCH') {
+    console.log("[AURION-WORKER]  Début DECRYPT_BATCH reçu. Nombre d'emails:", data?.emails?.length);
     try {
       const { emails } = data;
       const processedEmails = [];
       const indexUpdates = []; 
 
       for (const email of emails) {
+        console.log(`[AURION-WORKER]  Traitement de l'email ID: ${email.id}, Sujet: ${email.subject}`);
         const processedEmail = { ...email };
         let clearTextBody: string | null = null;
         let isPgpMimeGlobal = false;
 
         if (processedEmail.bodyValues) {
+          console.log(`[AURION-WORKER] [${email.id}] bodyValues détecté. Clés disponibles:`, Object.keys(processedEmail.bodyValues));
           const updatedBodyValues: Record<string, EmailBodyValue> = { ...processedEmail.bodyValues };
           let isDecrypted = false;
 
           for (const partId in updatedBodyValues) {
             const bodyValue = updatedBodyValues[partId];
-            if (!bodyValue) continue;
+            if (!bodyValue) {
+              console.log(`[AURION-WORKER] [${email.id}] Clé ${partId} vide ou nulle.`);
+              continue;
+            }
 
+            console.log(`[AURION-WORKER] [${email.id}][Part:${partId}] Analyse du contenu (Taille: ${bodyValue.value?.length} caractères)`);
+            
             // Détection 1 : Format Inline (Ancien)
             const isInlinePGP = bodyValue.value.includes('-----BEGIN PGP MESSAGE-----');
             // Détection 2 : Format PGP/MIME via notre clé artificielle injectée dans getEmail
@@ -55,32 +62,40 @@ self.onmessage = async (event) => {
                               bodyValue.value.includes('application/pgp-encrypted') || 
                               bodyValue.value.includes('encrypted.asc');
 
+            console.log(`[AURION-WORKER] [${email.id}][Part:${partId}] Verdict détection -> isInlinePGP: ${isInlinePGP}, isPgpMime: ${isPgpMime}`);
+
             if (isInlinePGP || isPgpMime) {
               if (partId === 'mime-heavy-payload' || isPgpMime) {
                 isPgpMimeGlobal = true;
               }
 
-              // Déchiffrement du bloc complet via l'SDK (Sait extraire le PGP d'un flux binaire ou texte)
-              clearTextBody = await workerSession.decryptCiphertext(bodyValue.value, processedEmail.accountLabel);
-              
-              // On remplace la valeur par le texte brut DECHIFFRE (qui contient le sous-MIME)
-              updatedBodyValues[partId] = {
-                ...bodyValue,
-                value: clearTextBody,
-                isTruncated: false
-              };
-              isDecrypted = true;
+              try {
+                console.log(`[AURION-WORKER] [${email.id}][Part:${partId}]  Lancement de workerSession.decryptCiphertext...`);
+                // Début de l'aperçu du payload pour voir s'il y a des caractères étranges
+                console.log(`[AURION-WORKER] [${email.id}][Part:${partId}] Début du payload chiffré:`, bodyValue.value.substring(0, 150));
+                
+                clearTextBody = await workerSession.decryptCiphertext(bodyValue.value, processedEmail.accountLabel);
+                
+                console.log(`[AURION-WORKER] [${email.id}][Part:${partId}]  Déchiffrement réussi ! Longueur du clair: ${clearTextBody?.length}`);
+                
+                updatedBodyValues[partId] = {
+                  ...bodyValue,
+                  value: clearTextBody,
+                  isTruncated: false
+                };
+                isDecrypted = true;
+              } catch (decryptError) {
+                console.error(`[AURION-WORKER]  ERREUR CRITIQUE pendant le decryptCiphertext de la clé ${partId}:`, decryptError);
+                throw decryptError; // On rethrow pour que le catch global affiche la stacktrace
+              }
             } else {
-              // Gère le cas où le mail est déjà en clair
+              console.log(`[AURION-WORKER] [${email.id}][Part:${partId}] Contenu non chiffré détecté.`);
               clearTextBody = bodyValue.value;
             }
           }
           
           if (isDecrypted) {
             processedEmail.bodyValues = updatedBodyValues;
-            
-            // SÉCURITÉ PRÉVIEW : Si c'est un gros bloc PGP/MIME, on ne génère pas la preview 
-            // sur le code MIME brut (Content-Type: ...), le Normalizer s'en chargera sur le thread principal.
             if (isPgpMimeGlobal) {
               processedEmail.preview = "[Message Sécurisé]";
             } else {
@@ -92,20 +107,27 @@ self.onmessage = async (event) => {
         }
 
         // ALIMENTATION DE L'INDEX LOCAL DU WORKER
-        // Pour le PGP/MIME global, on évite d'indexer les headers bruts SMTP s'ils sont présents au début
         if (clearTextBody) {
-          const indexableText = isPgpMimeGlobal 
-            ? clearTextBody.replace(/^[\s\S]*?\r?\n\r?\n/, "") // Enlève les premiers headers MIME pour l'indexation
-            : clearTextBody;
+          try {
+            console.log(`[AURION-WORKER] [${email.id}]  Indexation locale du message...`);
+            const indexableText = isPgpMimeGlobal 
+              ? clearTextBody.replace(/^[\s\S]*?\r?\n\r?\n/, "") 
+              : clearTextBody;
 
-          workerSession.searchEngine.indexMail(processedEmail.id, [], indexableText);
-          const tokens = workerSession.extractSearchTokens(indexableText);
-          indexUpdates.push({ id: processedEmail.id, tokens });
+            workerSession.searchEngine.indexMail(processedEmail.id, [], indexableText);
+            const tokens = workerSession.extractSearchTokens(indexableText);
+            indexUpdates.push({ id: processedEmail.id, tokens });
+            console.log(`[AURION-WORKER] [${email.id}] Indexation terminée (${tokens.length} tokens extraits).`);
+          } catch (indexError) {
+            console.error(`[AURION-WORKER]  Erreur pendant l'indexation de l'email ${email.id}:`, indexError);
+            // On ne bloque pas tout le batch si seule l'indexation d'un mail foire
+          }
         }
 
         // 2. Déchiffrement des métadonnées de liste (preview / subject) si elles sont Inline
         if (processedEmail.preview && processedEmail.preview.includes('-----BEGIN PGP MESSAGE-----')) {
           try {
+            console.log(`[AURION-WORKER] [${email.id}] Déchiffrement de la preview de liste...`);
             processedEmail.preview = await workerSession.decryptCiphertext(processedEmail.preview, processedEmail.accountLabel);
           } catch (_) {
             processedEmail.preview = "[Message Chiffré]";
@@ -114,6 +136,7 @@ self.onmessage = async (event) => {
         
         if (processedEmail.subject && processedEmail.subject.includes('-----BEGIN PGP MESSAGE-----')) {
           try {
+            console.log(`[AURION-WORKER] [${email.id}] Déchiffrement du sujet de liste...`);
             processedEmail.subject = await workerSession.decryptCiphertext(processedEmail.subject, processedEmail.accountLabel);
           } catch (_) {
             processedEmail.subject = "[Sujet Chiffré]";
@@ -123,6 +146,7 @@ self.onmessage = async (event) => {
         processedEmails.push(processedEmail);
       }
 
+      console.log("[AURION-WORKER] 🚀 Fin DECRYPT_BATCH réussie. Envoi des données remontées à l'UI.");
       self.postMessage({ 
         id, 
         success: true, 
@@ -134,6 +158,8 @@ self.onmessage = async (event) => {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : 'No stacktrace';
+      console.error("[AURION-WORKER] 🔥 ERREUR FINALE CAPTURÉE DANS LE WORKER:", errorMessage, errorStack);
       self.postMessage({ id, success: false, error: "Worker decryption batch failed: " + errorMessage });
     }
     return;
