@@ -902,6 +902,26 @@ export class JMAPClient implements IJMAPClient {
       return null;
     }
   }
+  async getIdsForAurionIndexing(batchSize : number, position: number, accountId?: string): Promise<any> {
+    return await this.request([
+        ["Email/query", {
+          accountId: this.accountId,
+          sort: [{ property: "receivedAt", isAscending: false }],
+          limit: batchSize,
+          position: position,
+        }, "0"]
+      ]);
+  }
+
+  async getEmailsForAurionIndexing(missingIds: string[], accountId?: string): Promise<any> {
+    return await this.request([
+          ["Email/get", {
+            accountId: this.accountId,
+            ids: missingIds,
+            properties: ["id", "body"]
+          }, "0"]
+        ]);
+  }
 
   async getMailboxes(accountId?: string): Promise<Mailbox[]> {
     const acctId = accountId || this.accountId;

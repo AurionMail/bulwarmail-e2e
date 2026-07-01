@@ -2,26 +2,33 @@ import { AurionApiClient, AurionSession } from 'aurion-crypto-sdk';
 import { AurionIndexedDBDriver } from 'aurion-crypto-sdk';
 import { cryptoWorkerBridge } from './worker-bridge';
 import { apiFetch } from '@/lib/browser-navigation';
+import { JMAPClient } from '../jmap/client';
 
 // Instance partagée (singleton) qui sera créée dynamiquement
 let aurionApiInstance: Promise<AurionApiClient> | null = null;
 
 /**
- * Récupère l'instance de l'API avec la bonne URL configurée au runtime.
+ * Récupère l'instance unique (singleton) de l'API.
  */
-export async function getAurionApi(): Promise<AurionApiClient> {
-  if (aurionApiInstance) return aurionApiInstance;
-
-  try {
-    // On appelle l'API de config
-    const response = await apiFetch('/api/config');
-    const data = await response.json();
-    
-    return  new AurionApiClient(data?.AurionServerUrl || 'https://api.aurion.com');
-  } catch (error) {
-    console.error("[Aurion API] Échec du chargement de la config, fallback sur l'URL par défaut", error);
-    return  new AurionApiClient('https://api.aurion.com');
+export function getAurionApi(): Promise<AurionApiClient> {
+  // Si la promesse existe déjà (en cours ou résolue), on la retourne immédiatement
+  if (aurionApiInstance) {
+    return aurionApiInstance;
   }
+
+  // Sinon, on crée la promesse et on l'assigne DIRECTEMENT au singleton
+  aurionApiInstance = (async () => {
+    try {
+      const response = await apiFetch('/api/config');
+      const data = await response.json();
+      return new AurionApiClient(data?.AurionServerUrl || 'https://api.aurion.internal');
+    } catch (error) {
+      console.error("[Aurion API] Échec du chargement de la config, fallback sur l'URL par défaut", error);
+      return new AurionApiClient('https://api.aurion.internal');
+    }
+  })();
+
+  return aurionApiInstance;
 }
 
 // On exporte le driver pour pouvoir faire des getItem / setItem directement dans les stores de l'app
@@ -33,7 +40,7 @@ export const aurionSession = new AurionSession(aurionStorage);
  * Lance l'indexation globale et chirurgicale de la boîte mail en arrière-plan.
  * Récupère uniquement les couples {id, body} par lots pour nourrir MiniSearch via le Worker.
  */
-export async function runInitialIndexing(client: any, targetAccountId: string): Promise<void> {
+export async function runInitialIndexing(client: JMAPClient): Promise<void> {
   // Est-ce que le coffre-fort UI est bien déverrouillé ?
   if (!aurionSession || !aurionSession.isUnlocked()) {
     console.warn("[Index Initial] Annulation : La session Aurion est verrouillée.");
@@ -55,14 +62,7 @@ export async function runInitialIndexing(client: any, targetAccountId: string): 
   try {
     while (hasMore) {
       // 1. On demande uniquement la liste des IDs au serveur (très léger)
-      const queryResponse = await client.request([
-        ["Email/query", {
-          accountId: targetAccountId,
-          sort: [{ property: "receivedAt", isAscending: false }],
-          limit: batchSize,
-          position: position,
-        }, "0"]
-      ]);
+      const queryResponse = await client.getIdsForAurionIndexing(batchSize, position);
 
       const allIds = (queryResponse.methodResponses?.[0]?.[1]?.ids || []) as string[];
       if (allIds.length === 0) {
@@ -75,13 +75,7 @@ export async function runInitialIndexing(client: any, targetAccountId: string): 
 
       if (missingIds.length > 0) {
         // 3. On ne demande STRICTEMENT que l'id et le body chiffré
-        const getResponse = await client.request([
-          ["Email/get", {
-            accountId: targetAccountId,
-            ids: missingIds,
-            properties: ["id", "body"]
-          }, "0"]
-        ]);
+        const getResponse = await client.getEmailsForAurionIndexing(missingIds);
 
         const lightMails = (getResponse.methodResponses?.[0]?.[1]?.list || []) as Array<{ id: string, body: string }>;
 

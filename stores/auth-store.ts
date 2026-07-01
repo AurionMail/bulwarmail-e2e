@@ -385,7 +385,6 @@ export const useAuthStore = create<AuthState>()(
       securityMode: 'Confort',//AURION
 
      login: async (serverUrl, username, password, totp, rememberMe, securityMode = 'Confort', mailPassword?: string) => {//AURION
-        const effectivePassword = totp ? `${password}$${totp}` : password;
         set({ isLoading: true, error: null, isRateLimited: false, rateLimitUntil: null });
 
         try {
@@ -485,7 +484,7 @@ export const useAuthStore = create<AuthState>()(
           // Resolve account/slot info up front so writes can start immediately.
           const accountStore = useAccountStore.getState();
           const accountId = generateAccountId(username, serverUrl);
-          await runInitialIndexing(client, accountId);// AURION
+          await runInitialIndexing(client);// AURION
           await verifyAndSyncRouting(); //AURION
           const cookieSlot = accountStore.hasAccount(username, serverUrl)
             ? (accountStore.getAccountById(accountId)?.cookieSlot ?? accountStore.getNextCookieSlot())
@@ -517,7 +516,7 @@ export const useAuthStore = create<AuthState>()(
               const tokenRes = await apiFetch('/api/auth/totp-token-exchange', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serverUrl, username, password: effectivePassword, slot: cookieSlot }),
+                body: JSON.stringify({ serverUrl, username, password: effectiveJmapPassword, slot: cookieSlot }),
                 // Note: server_id isn't passed here - the route looks up the
                 // server entry by serverUrl, so per-server OAuth still applies
                 // for password+TOTP logins through the dropdown.
@@ -557,7 +556,7 @@ export const useAuthStore = create<AuthState>()(
             ? apiFetch(`/api/auth/session?slot=${cookieSlot}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serverUrl, username, password: effectivePassword, slot: cookieSlot }),
+                body: JSON.stringify({ serverUrl, username, password: effectiveJmapPassword, slot: cookieSlot }),
               }).then((res) => {
                 if (!res.ok) debug.error('Failed to store session: server returned', res.status);
               }).catch((err) => debug.error('Failed to store session:', err))
@@ -1475,7 +1474,7 @@ export const useAuthStore = create<AuthState>()(
                 if (res.ok) {
                   const { serverUrl, username, password } = await res.json();
                   console.debug(`[AUTH INVESTIGATION] analyse des valeurs de retour : serverUrl=${serverUrl}, username=${username}, password=${password}`);
-                  // Si mot de passe pas bon ou correspond à celui d'aurion, faire une fonction de stokage du mot de passe chiffré
+                  // Si mot de passe pas bon ou correspond à celui d'aurion, faire une fonction de stokage du mot de passe chiffré, confirmé, faire fonctions de stokage du mot de passe server
                   const client = new JMAPClient(serverUrl, username, password);
                   bindClientStatusHandlers(client, set, get, account.id);
                   await client.connect();
@@ -1535,7 +1534,7 @@ export const useAuthStore = create<AuthState>()(
                   salts.salt_client, 
                   aurionSession.h0
                 );
-                await runInitialIndexing(targetClient, targetId);//AURION
+                await runInitialIndexing(targetClient);//AURION
                 await verifyAndSyncRouting();//AURION
               } catch (cryptoErr) {
                 debug.error('Failed to load Aurion PGP Keys during session restoration:', cryptoErr);
