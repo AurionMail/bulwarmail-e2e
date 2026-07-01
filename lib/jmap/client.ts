@@ -1077,19 +1077,19 @@ export class JMAPClient implements IJMAPClient {
 
 
   private async parseLocalMimeString(mimeText: string) {
+  console.log("[AURION-DEBUG] 1. Entrée dans parseLocalMimeString. Taille du MIME brut:", mimeText?.length);
+  
   const parser = new PostalMime();
   const email = await parser.parse(mimeText);
 
+  console.log("[AURION-DEBUG] 2. PostalMime a terminé le parsing.");
+  console.log("[AURION-DEBUG] -> Nombre de PJ trouvées par la lib:", email.attachments?.length || 0);
+
   // Helper performant et robuste pour normaliser en Uint8Array
   const contentToUint8Array = (content: string | ArrayBuffer | Uint8Array): Uint8Array => {
-    if (content instanceof Uint8Array) {
-      return content;
-    }
-    if (content instanceof ArrayBuffer) {
-      return new Uint8Array(content);
-    }
+    if (content instanceof Uint8Array) return content;
+    if (content instanceof ArrayBuffer) return new Uint8Array(content);
     if (typeof content === 'string') {
-      // Cas rare où le parser renvoie une string pour un contenu binaire
       const binaryString = unescape(encodeURIComponent(content));
       const uint8 = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -1100,20 +1100,30 @@ export class JMAPClient implements IJMAPClient {
     return new Uint8Array();
   };
 
+  const mappedAttachments = email.attachments.map((att, idx) => {
+    const content = att.content;
+    const uint8Data = content ? contentToUint8Array(content) : new Uint8Array();
+
+    console.log(`[AURION-DEBUG] 2.A. Analyse PJ index [${idx}]:`, {
+      filename: att.filename,
+      mimeType: att.mimeType,
+      disposition: att.disposition,
+      contentInstance: content ? content.constructor.name : 'null/undefined',
+      calculatedUint8Length: uint8Data.length
+    });
+
+    return {
+      name: att.filename || `piece_jointe_${idx}`,
+      type: att.mimeType || "application/octet-stream",
+      rawData: uint8Data,
+      size: uint8Data.length
+    };
+  });
+
   return {
     text: email.text || "",
     html: email.html || "",
-    attachments: email.attachments.map(att => {
-      const content = att.content;
-      const uint8Data = content ? contentToUint8Array(content) : new Uint8Array();
-
-      return {
-        name: att.filename || "piece_jointe",
-        type: att.mimeType || "application/octet-stream",
-        rawData: uint8Data, // On stocke le binaire brut ici au lieu du Base64
-        size: uint8Data.length
-      };
-    })
+    attachments: mappedAttachments
   };
 }
 
@@ -1121,7 +1131,10 @@ export class JMAPClient implements IJMAPClient {
 // AURION HELPER : Normalisation JMAP (Appel async)
 // =========================================================================
 private async normalizeDecryptedEmail(email: any): Promise<Email> {
-  if (!email || !email.bodyValues) return email;
+  if (!email || !email.bodyValues) {
+    console.warn("[AURION-DEBUG] normalizeDecryptedEmail stoppé : email ou bodyValues absent.");
+    return email;
+  }
 
   let rawValue = email.bodyValues["mime-heavy-payload"]?.value;
   if (!rawValue) {
@@ -1129,13 +1142,15 @@ private async normalizeDecryptedEmail(email: any): Promise<Email> {
     rawValue = email.bodyValues[partId]?.value;
   }
 
-  if (!rawValue) return email;
+  if (!rawValue) {
+    console.warn("[AURION-DEBUG] normalizeDecryptedEmail stoppé : aucun payload textuel trouvé.");
+    return email;
+  }
 
   try {
-    console.log("[AURION-UI] Parsing avec PostalMime...");
+    console.log("[AURION-DEBUG] 3. Lancement de parseLocalMimeString...");
     const parsedMime = await this.parseLocalMimeString(rawValue);
 
-    // Évite la mutation directe de l'objet d'origine (shallow copy)
     const normalizedEmail = {
       ...email,
       textBody: [],
@@ -1163,29 +1178,44 @@ private async normalizeDecryptedEmail(email: any): Promise<Email> {
     // Injection pièces jointes
     if (parsedMime.attachments.length > 0) {
       normalizedEmail.hasAttachment = true;
+      
+      console.log(`[AURION-DEBUG] 4. Traitement de ${parsedMime.attachments.length} PJ pour l'UI JMAP.`);
+
       normalizedEmail.attachments = parsedMime.attachments.map((att, index) => {
         const id = `att-${index}`;
         
-        // Création directe du Blob depuis le Uint8Array sans repasser par atob/btoa
-        // On cast en ArrayBufferView pour satisfaire la signature du constructeur de Blob
-        const blob = new Blob([att.rawData as any], { type: att.type });
-        const localBlobUrl = URL.createObjectURL(blob);
+        try {
+          const blob = new Blob([att.rawData as any], { type: att.type });
+          const localBlobUrl = URL.createObjectURL(blob);
 
-        return {
-          id: id,
-          partId: id,
-          blobId: localBlobUrl, // ⚠️ Pense à appeler URL.revokeObjectURL(url) au unmount du composant de lecture
-          size: att.size,
-          name: att.name,
-          type: att.type,
-          disposition: "attachment"
-        };
-      });
+          const finalAttachmentObj = {
+            id: id,
+            partId: id,
+            blobId: localBlobUrl, 
+            size: att.size,
+            name: att.name,
+            type: att.type,
+            disposition: "attachment",
+            isInline: false // Sécurité pour forcer l'affichage dans la liste des téléchargements
+          };
+
+          console.log(`[AURION-DEBUG] ✅ PJ [${index}] convertie en Blob JMAP:`, finalAttachmentObj);
+          return finalAttachmentObj;
+
+        } catch (blobError) {
+          console.error(`[AURION-DEBUG] ❌ Échec conversion Blob sur PJ [${index}]:`, blobError);
+          return null;
+        }
+      }).filter(Boolean); // Élimine les éventuels crashs de blobs
+
+      console.log("[AURION-DEBUG] 5. Fin du mapping PJ. normalizedEmail.attachments final:", normalizedEmail.attachments);
+    } else {
+      console.log("[AURION-DEBUG] 4. Aucune pièce jointe dans parsedMime.attachments.");
     }
 
-    return normalizedEmail;
+    return normalizedEmail as Email;
   } catch (e) {
-    console.error("[AURION] Erreur critique parsing PostalMime:", e);
+    console.error("[AURION-DEBUG] ❌ Erreur critique globale dans normalizeDecryptedEmail:", e);
     return email;
   }
 }
