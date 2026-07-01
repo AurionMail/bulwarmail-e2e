@@ -1136,16 +1136,22 @@ export class JMAPClient implements IJMAPClient {
   private normalizeDecryptedEmail(email: any): any {
   if (!email || !email.bodyValues) return email;
 
-  // On cherche la valeur textuelle déchiffrée (généralement sous la clé "1" ou "text")
-  const partId = email.textBody?.[0]?.partId || "1";
-  const rawValue = email.bodyValues[partId]?.value;
+  // =========================================================================
+  // NOUVEAU : Récupération prioritaire du Payload PGP/MIME décrypté par le Worker
+  // =========================================================================
+  let rawValue = email.bodyValues["mime-heavy-payload"]?.value;
+  let isFromMimeHeavy = true;
+
+  // Fallback : Si la clé personnalisée n'existe pas, on revient à l'ancienne logique (Clé "1" ou "text")
+  if (!rawValue) {
+    isFromMimeHeavy = false;
+    const partId = email.textBody?.[0]?.partId || "1";
+    rawValue = email.bodyValues[partId]?.value;
+  }
 
   if (!rawValue) return email;
 
-  // =========================================================================
-  // NOUVEAU : Détection du format standard PGP/MIME (RFC 3156)
-  // Si le contenu déchiffré commence par des en-têtes MIME typiques (ex: Content-Type:)
-  // =========================================================================
+  // Détection de la structure standard PGP/MIME déballée (Est-ce que ça commence par des en-têtes ?)
   const isStandardMime = /^(Content-Type|MIME-Version):/i.test(rawValue.trim());
 
   if (isStandardMime) {
@@ -1153,7 +1159,7 @@ export class JMAPClient implements IJMAPClient {
       // 1. On parse la structure MIME complexe (texte + pièces jointes)
       const parsedMime = this.parseLocalMimeString(rawValue);
 
-      // 2. Réinitialisation des conteneurs JMAP
+      // 2. NETTOYAGE ABSOLU : On vide les conteneurs JMAP de Stalwart (Au revoir le encrypted.asc visible)
       email.textBody = [];
       email.htmlBody = [];
       email.bodyValues = {};
@@ -1162,21 +1168,21 @@ export class JMAPClient implements IJMAPClient {
 
       let partCounter = 1;
 
-      // 3. Injection du texte brut
+      // 3. Injection du texte brut déchiffré
       if (parsedMime.text) {
         const id = `text-${partCounter++}`;
         email.textBody.push({ partId: id, type: "text/plain" });
         email.bodyValues[id] = { value: parsedMime.text };
-        email.preview = parsedMime.text.substring(0, 256);
+        email.preview = parsedMime.text.substring(0, 256).replace(/\s+/g, ' ');
       }
 
-      // 4. Injection du HTML
+      // 4. Injection du HTML déchiffré
       if (parsedMime.html) {
         const id = `html-${partCounter++}`;
         email.htmlBody.push({ partId: id, type: "text/html" });
         email.bodyValues[id] = { value: parsedMime.html };
         
-        // Si on n'avait pas de texte brut pour la preview, on nettoie l'HTML pour la générer
+        // Si on n'avait pas de texte brut pour fabriquer la preview, on nettoie le HTML
         if (!email.preview) {
           const cleanPreview = parsedMime.html
             .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -1187,13 +1193,13 @@ export class JMAPClient implements IJMAPClient {
         }
       }
 
-      // 5. Injection des pièces jointes converties en Blob URLs locaux
+      // 5. Injection des vraies pièces jointes converties en Blob URLs locaux
       if (parsedMime.attachments && parsedMime.attachments.length > 0) {
         email.hasAttachment = true;
         email.attachments = parsedMime.attachments.map((att, index) => {
           const id = `att-${index}`;
 
-          // Décodage Base64 -> Données Binaires -> Blob HTML5
+          // Décodage Base64 -> Données Binaires -> Blob HTML5 local
           const byteCharacters = atob(att.base64Data);
           const byteNumbers = new Array(byteCharacters.length);
           for (let i = 0; i < byteCharacters.length; i++) {
@@ -1202,12 +1208,12 @@ export class JMAPClient implements IJMAPClient {
           const byteArray = new Uint8Array(byteNumbers);
           const blob = new Blob([byteArray], { type: att.type });
           
-          // L'URL locale réutilisable directement par l'UI du client
+          // L'URL locale réutilisable directement par le gestionnaire de téléchargement du webmail
           const localBlobUrl = URL.createObjectURL(blob);
 
           return {
             partId: id,
-            blobId: localBlobUrl, // Remplace le blobId JMAP du serveur
+            blobId: localBlobUrl, // Remplace le blobId JMAP du serveur pour un usage instantané hors-ligne
             size: att.size,
             name: att.name || `fichier_${id}`,
             type: att.type,
@@ -1216,15 +1222,14 @@ export class JMAPClient implements IJMAPClient {
         });
       }
 
-      return email; // Terminé pour le format standard !
+      return email; // Fin du traitement pour le format standard PGP/MIME
     } catch (e) {
-      console.error("[AURION] Échec du parsing PGP/MIME standard:", e);
-      // En cas d'erreur de parsing, on laisse couler vers l'ancienne méthode par sécurité
+      console.error("[AURION] Échec du parsing PGP/MIME standard lors de la normalisation:", e);
     }
   }
 
   // =========================================================================
-  // ANCIEN : Ton code d'origine (Rétrocompatibilité avec tes tests précédents)
+  // ANCIEN : Ton code d'origine (Rétrocompatibilité Inline / Uniquement exécuté si pas de PGP/MIME)
   // =========================================================================
   const hasOldMimeHeader = /^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i.test(rawValue);
   const isHtml = hasOldMimeHeader || /<[a-z][\s\S]*>/i.test(rawValue);
@@ -1254,7 +1259,12 @@ export class JMAPClient implements IJMAPClient {
     }
   } else if (hasOldMimeHeader) {
     const cleanText = rawValue.replace(/^Content-Type: text\/html; charset=utf-8\r?\n\r?\n/i, "");
-    email.bodyValues[partId].value = cleanText;
+    
+    // Protection si on travaille sur une clé classique JMAP
+    if (!isFromMimeHeavy) {
+      const originalPartId = email.textBody?.[0]?.partId || "1";
+      email.bodyValues[originalPartId].value = cleanText;
+    }
     email.preview = cleanText.substring(0, 256);
   }
 
@@ -1417,11 +1427,37 @@ export class JMAPClient implements IJMAPClient {
         namespaceMailboxIds([email], accountId);
       }
 
-      // INTERCEPTION AURION : Déchiffrement lourd du corps du message via le Web Worker
+      // =========================================================================
+      //  AURION : Téléchargement du bloc chiffré PGP/MIME
+      // =========================================================================
+      const encryptedAttachment = email.attachments?.find(
+        (att: any) => att.name === 'encrypted.asc' || att.type === 'application/pgp-encrypted'
+      );
+
+      if (encryptedAttachment) {
+        console.log("[AURION] Détection d'un mail PGP/MIME. Extraction du blob chiffré...");
+        try {
+          // 1. Récupération du fichier binaire .asc stocké de manière aveugle sur Stalwart
+          const encryptedBlob = await this.fetchBlob(encryptedAttachment.blobId, encryptedAttachment.name, encryptedAttachment.type);
+          const encryptedText = await encryptedBlob.text();
+
+          // 2. Injection artificielle dans bodyValues pour forcer le Worker à le voir
+          if (!email.bodyValues) email.bodyValues = {};
+          email.bodyValues["mime-heavy-payload"] = { value: encryptedText, isTruncated: false };
+          
+          // 3. On fait pointer textBody sur notre clé personnalisée
+          email.textBody = [{ partId: "mime-heavy-payload", type: "text/plain" }];
+        } catch (blobError) {
+          console.error("[AURION] Impossible de récupérer le blob chiffré d'origine :", blobError);
+        }
+      }
+      // =========================================================================
+
+      //  AURION : Déchiffrement lourd du corps du message via le Web Worker
       const [decryptedEmail] = await cryptoWorkerBridge.processMailBatchAsync([email]);
       if (!decryptedEmail) return null;
 
-      // AURION NORMALISATION : Restructuration locale du JMAP déchiffré
+      //  AURION NORMALISATION : Restructuration locale du JMAP déchiffré
       const normalizedEmail = this.normalizeDecryptedEmail(decryptedEmail);
 
       if (normalizedEmail.headers) {

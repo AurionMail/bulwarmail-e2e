@@ -28,6 +28,7 @@ self.onmessage = async (event) => {
   }
 
   // --- TRAITEMENT DU FLUX ENTRANT (GETEMAIL / GETEMAILS) ---
+  // --- TRAITEMENT DU FLUX ENTRANT (GETEMAIL / GETEMAILS) ---
   if (action === 'DECRYPT_BATCH') {
     try {
       const { emails } = data;
@@ -37,6 +38,7 @@ self.onmessage = async (event) => {
       for (const email of emails) {
         const processedEmail = { ...email };
         let clearTextBody: string | null = null;
+        let isPgpMimeGlobal = false;
 
         if (processedEmail.bodyValues) {
           const updatedBodyValues: Record<string, EmailBodyValue> = { ...processedEmail.bodyValues };
@@ -48,15 +50,20 @@ self.onmessage = async (event) => {
 
             // Détection 1 : Format Inline (Ancien)
             const isInlinePGP = bodyValue.value.includes('-----BEGIN PGP MESSAGE-----');
-            // Détection 2 : Format PGP/MIME (Nouveau proxy) - La valeur contient l'enveloppe ou le bloc brut
-            const isPgpMime = bodyValue.value.includes('application/pgp-encrypted') || 
+            // Détection 2 : Format PGP/MIME via notre clé artificielle injectée dans getEmail
+            const isPgpMime = partId === 'mime-heavy-payload' || 
+                              bodyValue.value.includes('application/pgp-encrypted') || 
                               bodyValue.value.includes('encrypted.asc');
 
             if (isInlinePGP || isPgpMime) {
-              // Déchiffrement du bloc complet (OpenPGP.js sait extraire le PGP d'un flux texte MIME ou brut)
+              if (partId === 'mime-heavy-payload' || isPgpMime) {
+                isPgpMimeGlobal = true;
+              }
+
+              // Déchiffrement du bloc complet via l'SDK (Sait extraire le PGP d'un flux binaire ou texte)
               clearTextBody = await workerSession.decryptCiphertext(bodyValue.value, processedEmail.accountLabel);
               
-              // On remplace la valeur par le texte brut DECHIFFRE (qui contient le sous-MIME ou le texte clair)
+              // On remplace la valeur par le texte brut DECHIFFRE (qui contient le sous-MIME)
               updatedBodyValues[partId] = {
                 ...bodyValue,
                 value: clearTextBody,
@@ -71,17 +78,28 @@ self.onmessage = async (event) => {
           
           if (isDecrypted) {
             processedEmail.bodyValues = updatedBodyValues;
-            // On extrait une preview temporaire sécurisée (sera affinée par le normalizer)
-            const bodyParts = Object.values(updatedBodyValues) as EmailBodyValue[];
-            const mainTextPart = bodyParts[0]?.value || '';
-            processedEmail.preview = mainTextPart.slice(0, 200).replace(/\s+/g, ' ') + '...';
+            
+            // SÉCURITÉ PRÉVIEW : Si c'est un gros bloc PGP/MIME, on ne génère pas la preview 
+            // sur le code MIME brut (Content-Type: ...), le Normalizer s'en chargera sur le thread principal.
+            if (isPgpMimeGlobal) {
+              processedEmail.preview = "[Message Sécurisé]";
+            } else {
+              const bodyParts = Object.values(updatedBodyValues) as EmailBodyValue[];
+              const mainTextPart = bodyParts[0]?.value || '';
+              processedEmail.preview = mainTextPart.slice(0, 200).replace(/\s+/g, ' ') + '...';
+            }
           }
         }
 
         // ALIMENTATION DE L'INDEX LOCAL DU WORKER
+        // Pour le PGP/MIME global, on évite d'indexer les headers bruts SMTP s'ils sont présents au début
         if (clearTextBody) {
-          workerSession.searchEngine.indexMail(processedEmail.id, [], clearTextBody);
-          const tokens = workerSession.extractSearchTokens(clearTextBody);
+          const indexableText = isPgpMimeGlobal 
+            ? clearTextBody.replace(/^[\s\S]*?\r?\n\r?\n/, "") // Enlève les premiers headers MIME pour l'indexation
+            : clearTextBody;
+
+          workerSession.searchEngine.indexMail(processedEmail.id, [], indexableText);
+          const tokens = workerSession.extractSearchTokens(indexableText);
           indexUpdates.push({ id: processedEmail.id, tokens });
         }
 
