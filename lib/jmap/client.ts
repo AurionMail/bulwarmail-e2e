@@ -1439,18 +1439,23 @@ export class JMAPClient implements IJMAPClient {
       }
 
       // =========================================================================
-      //  AURION : Téléchargement du bloc chiffré PGP/MIME
+      // INTERCEPTION AURION : Téléchargement du bloc chiffré PGP/MIME
       // =========================================================================
+      // CRITICAL : On cherche STRICTEMENT le fichier contenant les données (encrypted.asc)
+      // et on ignore la pièce jointe technique "Version: 1" (qui a souvent le type application/pgp-encrypted)
       const encryptedAttachment = email.attachments?.find(
-        (att: any) => att.name === 'encrypted.asc' || att.type === 'application/pgp-encrypted'
+        (att: any) => att.name === 'encrypted.asc' || 
+                      (att.type === 'application/octet-stream' && att.name?.endsWith('.asc'))
       );
 
       if (encryptedAttachment) {
-        console.log("[AURION] Détection d'un mail PGP/MIME. Extraction du blob chiffré...");
+        console.log("[AURION] Détection du vrai fichier chiffré PGP/MIME:", encryptedAttachment.name);
         try {
-          // 1. Récupération du fichier binaire .asc stocké de manière aveugle sur Stalwart
+          // 1. Récupération du fichier binaire .asc stocké sur Stalwart
           const encryptedBlob = await this.fetchBlob(encryptedAttachment.blobId, encryptedAttachment.name, encryptedAttachment.type);
           const encryptedText = await encryptedBlob.text();
+
+          console.log("[AURION] Payload récupéré. Longueur réelle:", encryptedText?.length);
 
           // 2. Injection artificielle dans bodyValues pour forcer le Worker à le voir
           if (!email.bodyValues) email.bodyValues = {};
@@ -1462,6 +1467,7 @@ export class JMAPClient implements IJMAPClient {
           console.error("[AURION] Impossible de récupérer le blob chiffré d'origine :", blobError);
         }
       }
+      // =========================================================================
       // =========================================================================
 
       //  AURION : Déchiffrement lourd du corps du message via le Web Worker
